@@ -8,8 +8,8 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
 :root {
-  --bg:#f0f4f8; --card:#fff; --border:#e2e8f0; --border2:#cbd5e1;
-  --text:#1e293b; --sub:#475569; --muted:#94a3b8;
+  --bg:#f4f7fc; --card:#fff; --border:#e6edf6; --border2:#cdd8e8;
+  --text:#15233b; --sub:#3f4d62; --muted:#7c8a9e;
   --blue:#2563eb; --blue-l:#eff6ff;
   --green:#059669; --green-l:#ecfdf5;
   --red:#dc2626;   --red-l:#fef2f2;
@@ -17,8 +17,8 @@
   --purple:#7c3aed; --purple-l:#f5f3ff;
   --teal:#0891b2;  --teal-l:#ecfeff;
   --gold:#b45309;  --gold-l:#fef3c7;
-  --sh: 0 1px 4px rgba(0,0,0,.08);
-  --sh2:0 4px 16px rgba(0,0,0,.08);
+  --sh: 0 1px 3px rgba(15,23,42,.05);
+  --sh2:0 6px 22px rgba(15,23,42,.07);
   --r:16px; --font:'Noto Sans KR',sans-serif;
   /* 순별 그룹 색상 */
   --onyu:#2563eb;    --onyu-l:#eff6ff;   --onyu-b:#bfdbfe;
@@ -27,10 +27,10 @@
   --yangson:#d97706; --yangson-l:#fffbeb;--yangson-b:#fde68a;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px}
+html,body{min-height:100vh;background:linear-gradient(180deg,#f7faff 0%,#f1f5fb 100%);background-attachment:fixed;color:var(--text);font-family:var(--font);font-size:15px;-webkit-font-smoothing:antialiased}
 
 /* HEADER */
-.hd{background:var(--blue);padding:10px 16px 12px;box-shadow:0 2px 16px rgba(37,99,235,.3);position:sticky;top:0;z-index:100}
+.hd{background:linear-gradient(120deg,#3b82f6 0%,#2563eb 55%,#1e54d4 100%);padding:10px 16px 12px;box-shadow:0 2px 16px rgba(37,99,235,.22);position:sticky;top:0;z-index:100}
 .hd-r1{display:flex;align-items:center;justify-content:center;position:relative;margin-bottom:10px}
 .hd-logo{display:flex;align-items:center;gap:8px}
 .hd-ic{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
@@ -51,6 +51,9 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:va
 .hd-btn{padding:5px 12px;border-radius:9px;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .18s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
 .hd-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.6)}
 .hd-btn.on{background:#fff;color:var(--blue);border-color:#fff}
+.hd-btn.fav{background:#fde68a;border-color:#fcd34d;color:#7c4a03;box-shadow:0 1px 6px rgba(245,158,11,.3)}
+.hd-btn.fav:hover{background:#fcd34d;border-color:#fbbf24;color:#6b3f02}
+.hd-btn.fav.on{background:#f59e0b;border-color:#f59e0b;color:#fff}
 .hd-sep{width:1px;height:20px;background:rgba(255,255,255,.25)}
 
 /* LOADER */
@@ -192,8 +195,8 @@ tr:hover td{background:var(--bg)}
 /* DETAIL DRAWER */
 .drw-overlay{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.35);backdrop-filter:blur(2px)}
 .drw-overlay.on{display:block}
-.drw{position:fixed;bottom:0;left:0;right:0;z-index:301;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.14);max-height:55vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,0,.67,0)}
-.drw.on{transform:translateY(0)}
+.drw{position:fixed;bottom:0;left:50%;right:auto;width:100%;max-width:560px;z-index:301;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.14);max-height:62vh;display:flex;flex-direction:column;transform:translate(-50%,100%);transition:transform .28s cubic-bezier(.32,0,.67,0)}
+.drw.on{transform:translate(-50%,0)}
 .drw-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:10px auto 0;flex-shrink:0}
 .drw-hd{display:flex;align-items:center;justify-content:space-between;padding:9px 15px 7px;flex-shrink:0;border-bottom:1px solid var(--border)}
 .drw-mon{font-size:14px;font-weight:800;margin-bottom:3px}
@@ -475,9 +478,9 @@ tr:hover td{background:var(--bg)}
     </div>
     <div class="hd-sep"></div>
     <button class="hd-btn" id="cmpBtn"   onclick="toggleCmp()">⚖ 연도비교</button>
-    <button class="hd-btn" id="offerBtn" onclick="toggleOffer()">🙏 순헌금관련</button>
+    <button class="hd-btn fav" id="offerBtn" onclick="toggleOffer()">🙏 순헌금관련</button>
     <button class="hd-btn" onclick="openRpt()">📄 월별보고서</button>
-    <button class="hd-btn" id="auditBtn" onclick="openAudit()">📋 감사자료</button>
+    <button class="hd-btn fav" id="auditBtn" onclick="openAudit()">📋 감사자료</button>
     <div class="hd-sep"></div>
     <button class="hd-btn" onclick="openShare()">💬 카카오공유</button>
     <button class="hd-btn" style="background:rgba(33,115,70,.5);border-color:rgba(255,255,255,.5)" onclick="dlExcel()">📥 엑셀저장</button>
@@ -525,7 +528,7 @@ tr:hover td{background:var(--bg)}
 
   <!-- OFFER PANEL -->
   <div class="offer-panel" id="offerPanel">
-    <div class="offer-title">🙏 순헌금 비교 현황<button class="panel-close" onclick="toggleOffer()">✕ 닫기</button></div>
+    <div class="offer-title">🙏 순헌금 관련 현황<button class="panel-close" onclick="toggleOffer()">✕ 닫기</button></div>
     <div class="offer-sub" id="offerSub">2026년 순(팀)별 월별 헌금 현황</div>
     <div class="offer-ctrl">
       <div class="offer-tabs">
@@ -1011,7 +1014,9 @@ function renderMonthly() {
       },
       onClick: function(e, els) {
         if (!els.length) return;
-        openDrw(mns[els[0].index]);
+        var el=els[0];
+        var tab = el.datasetIndex===0?'income':(el.datasetIndex===1?'expense':'all');
+        openDrw(mns[el.index], tab);
       },
       onHover: function(e, els) {
         e.native.target.style.cursor = els.length ? 'pointer' : 'default';
@@ -1372,7 +1377,7 @@ function renderOfferMonthly(d6, d5) {
   rows+='<td></td></tr>';
   document.getElementById('offerMBody').innerHTML=rows;
 }
-/* 거래내역을 기본값으로 초기화 (월: 전체, 구분: 전체/전체 구분) */
+/* 거래내역을 기본값으로 초기화(월:전체, 구분:전체) 후 월별 그래프 뷰로 전환 */
 function resetTxDefault(){
   CM='all';
   var mos=document.querySelectorAll('.mo');
@@ -1380,6 +1385,13 @@ function resetTxDefault(){
   if(mos[0]) mos[0].classList.add('on');   // 전체
   var ft=document.getElementById('fType'); if(ft) ft.value='all';
   var fc=document.getElementById('fCat');  if(fc) fc.value='all';
+  // 하단 뷰를 '월별' 그래프로 전환
+  CV='monthly';
+  var vts=document.querySelectorAll('.vt');
+  vts.forEach(function(b){b.classList.remove('on');});
+  if(vts[0]) vts[0].classList.add('on');   // 📅 월별
+  var map={monthly:'vMonthly',weekly:'vWeekly',cat:'vCat',tx:'vTx'};
+  Object.keys(map).forEach(function(k){var el=document.getElementById(map[k]);if(el)el.style.display=(k==='monthly'?'block':'none');});
   renderView();
 }
 /* 월별 합계 막대 클릭 → 아래 거래내역을 '해당 월의 순헌금'으로 필터링 + 스크롤 */
@@ -1721,10 +1733,11 @@ function printRefund(){
   win.document.close();
   setTimeout(function(){win.print();},500);
 }
-function openDrw(mon) {
-  DRW_MON=mon; DRW_TAB='all';
+function openDrw(mon, tab) {
+  DRW_MON=mon; DRW_TAB=(tab==='income'||tab==='expense')?tab:'all';
   document.querySelectorAll('.dtab').forEach(function(b){b.classList.remove('on');});
-  document.getElementById('dtab-all').classList.add('on');
+  var btnId = DRW_TAB==='income'?'dtab-income':(DRW_TAB==='expense'?'dtab-expense':'dtab-all');
+  var ab=document.getElementById(btnId); if(ab) ab.classList.add('on');
   var d=D[CY]; if(!d)return;
   var md=d.months[mon-1];
   T('drwMon', CY+'년 '+MN[mon-1]+' 내역');
