@@ -1144,6 +1144,10 @@ function renderOffer() {
   else if (OFFER_TAB === 'monthly') renderOfferMonthly(d6, d5);
   else renderOfferWeekly(d6, d5);
 }
+/* 순헌금 판별: 구분(type)이 '순헌금'인 수입만 헌금으로 인정. 예금이자 등 기타수입은 제외 */
+function isOffering(t){ return t.dir==='income' && String(t.type||'').replace(/\s/g,'')==='순헌금'; }
+/* 월별 순헌금 합계(12개월 배열) — 예금이자 등은 제외 */
+function monthlyOffer(data){ var arr=new Array(12).fill(0); data.months.forEach(function(m){ m.transactions.forEach(function(t){ if(isOffering(t)) arr[m.month-1]+=t.amount; }); }); return arr; }
 function parseGS(raw) {
   var s = (raw||'').trim(), g = '기타', su = '기타';
   for (var i = 0; i < GRP.length; i++) { if (s.indexOf(GRP[i]) >= 0) { g = GRP[i]; break; } }
@@ -1154,7 +1158,7 @@ function collectSun(data) {
   var map = {};
   data.months.forEach(function(mo) {
     mo.transactions.forEach(function(t) {
-      if (t.dir !== 'income') return;
+      if (!isOffering(t)) return;
       var raw = (t.desc && t.desc.trim()) ? t.desc : (t.type || '');
       var info = parseGS(raw);
       if (!map[info.k]) map[info.k] = {g:info.g, s:info.s, months:new Array(12).fill(0), total:0};
@@ -1216,8 +1220,8 @@ function sunCell(v6, v5, cmp) {
 }
 function renderOfferMonthly(d6, d5) {
   killC('offerChart');
-  var inc6 = d6.months.map(function(m){return m.income;});
-  var inc5 = d5 ? d5.months.map(function(m){return m.income;}) : null;
+  var inc6 = monthlyOffer(d6);
+  var inc5 = d5 ? monthlyOffer(d5) : null;
   var ds = [{label:'2026년',data:inc6,backgroundColor:'rgba(180,83,9,.8)',borderRadius:5,borderSkipped:false}];
   if (inc5) ds.unshift({label:'2025년',data:inc5,backgroundColor:'rgba(148,163,184,.8)',borderRadius:5,borderSkipped:false});
   CHARTS.offerChart = new Chart(document.getElementById('offerChart'),{
@@ -1278,7 +1282,7 @@ function renderOfferWeekly(d6, d5) {
   function collectW(data, wkMap, allSubs) {
     data.months.forEach(function(mo) {
       mo.transactions.forEach(function(t) {
-        if (t.dir !== 'income') return;
+        if (!isOffering(t)) return;
         var raw = (t.desc && t.desc.trim()) ? t.desc : (t.type || '');
         var info = parseGS(raw);
         if (ALLOWED_GRP.indexOf(info.g) < 0) return;
@@ -1577,21 +1581,28 @@ function buildRpt(){
   var monthBal = carry + md.income - md.expense;
   var txs      = md.transactions.slice().sort(function(a,b){return(a.date||'').localeCompare(b.date||'');});
   var incTxs   = txs.filter(function(t){return t.dir==='income';});
+  var offerTxs    = incTxs.filter(isOffering);
+  var otherIncTxs = incTxs.filter(function(t){return !isOffering(t);});
   var expTxs   = txs.filter(function(t){return t.dir==='expense';});
 
   // 순헌금 요약
   var sunMap={};
-  incTxs.forEach(function(t){var raw=(t.desc&&t.desc.trim())?t.desc:(t.type||'');sunMap[raw]=(sunMap[raw]||0)+t.amount;});
+  offerTxs.forEach(function(t){var raw=(t.desc&&t.desc.trim())?t.desc:(t.type||'');sunMap[raw]=(sunMap[raw]||0)+t.amount;});
   var sunKeys=Object.keys(sunMap);
   var sunDesc=sunKeys.slice(0,5).join(', ')+(sunKeys.length>5?'…':'');
-  var sunTotal=incTxs.reduce(function(s,t){return s+t.amount;},0);
+  var sunTotal=offerTxs.reduce(function(s,t){return s+t.amount;},0);
+  // 기타수입(예금이자 등) 구분별 집계
+  var otherMap={};
+  otherIncTxs.forEach(function(t){var k=t.type||'기타수입';if(!otherMap[k])otherMap[k]={amt:0,descs:{}};otherMap[k].amt+=t.amount;if(t.desc&&t.desc.trim())otherMap[k].descs[t.desc.trim()]=true;});
+  var otherKeys=Object.keys(otherMap);
+  var otherTotal=otherIncTxs.reduce(function(s,t){return s+t.amount;},0);
 
   // 지출 항목
   var expItems=[];
   expTxs.forEach(function(t){expItems.push({sub:t.type||'지출',desc:t.desc||'',amt:Math.abs(t.amount),note:t.note||''});});
   if(!expItems.length) expItems.push({sub:'',desc:'',amt:0,note:''});
   var expTotal=expItems.reduce(function(s,i){return s+i.amt;},0);
-  var incTotal=carry+sunTotal;
+  var incTotal=carry+sunTotal+otherTotal;
 
   /* ── Page 1: 공식 보고서 ── */
   var p1='<div class="rp">';
@@ -1609,14 +1620,18 @@ function buildRpt(){
   p1+='<table class="rp-tbl"><colgroup><col style="width:40px"><col style="width:56px"><col><col style="width:108px"><col><col style="width:108px"></colgroup>';
   p1+='<tr><th>구분</th><th>항목</th><th>내역</th><th>금액(원)</th><th>비고 ('+(+yr-1)+'년 비교)</th><th>합계(원)</th></tr>';
 
-  // 수입 – 이월금
-  p1+='<tr class="in-row"><td class="cat-c" rowspan="3">수&nbsp;입</td>'
-    +'<td class="sub-c">이월금</td><td>'+esc(carryDesc)+'</td>'
-    +'<td class="amt-c">'+fmt(carry)+'</td><td class="note-c"></td>'
-    +'<td class="tot-c" rowspan="3">'+fmt(incTotal)+'</td></tr>';
-  // 수입 – 순헌금
-  p1+='<tr class="in-row"><td class="sub-c">순헌금</td><td>'+esc(sunDesc)+'</td><td class="amt-c">'+fmt(sunTotal)+'</td><td class="note-c"></td></tr>';
-  p1+='<tr class="in-row"><td class="sub-c"></td><td></td><td class="amt-c"></td><td></td></tr>';
+  // 수입 행: 이월금 + 순헌금 + 기타수입(예금이자 등)
+  var incRows=[{sub:'이월금',desc:carryDesc,amt:carry},{sub:'순헌금',desc:sunDesc,amt:sunTotal}];
+  otherKeys.forEach(function(k){var dd=Object.keys(otherMap[k].descs);incRows.push({sub:k,desc:(dd.length?dd.slice(0,5).join(', ')+(dd.length>5?'…':''):''),amt:otherMap[k].amt});});
+  var incRowCount=Math.max(incRows.length,3);
+  incRows.forEach(function(it,idx){
+    p1+='<tr class="in-row">';
+    if(idx===0) p1+='<td class="cat-c" rowspan="'+incRowCount+'">수&nbsp;입</td>';
+    p1+='<td class="sub-c">'+esc(it.sub)+'</td><td>'+esc(it.desc)+'</td><td class="amt-c">'+(it.amt?fmt(it.amt):'')+'</td><td class="note-c"></td>';
+    if(idx===0) p1+='<td class="tot-c" rowspan="'+incRowCount+'">'+fmt(incTotal)+'</td>';
+    p1+='</tr>';
+  });
+  for(var ir=incRows.length;ir<incRowCount;ir++) p1+='<tr class="in-row"><td class="sub-c"></td><td></td><td class="amt-c"></td><td></td></tr>';
 
   // 지출
   var expRowCount = Math.max(expItems.length, 3);
@@ -1682,7 +1697,7 @@ function rptExcel(){
   lines.push('구분,항목,내역,금액(원),비고,합계(원)');
   lines.push('수입,이월금,'+carryDesc+','+carry+',,');
   md.transactions.filter(function(t){return t.dir==='income';}).forEach(function(t){
-    lines.push('수입,순헌금,"'+esc(t.desc||t.type||'')+'",'+t.amount+',,');
+    lines.push('수입,'+esc(t.type||'순헌금')+',"'+esc(t.desc||'')+'",'+t.amount+',,');
   });
   md.transactions.filter(function(t){return t.dir==='expense';}).forEach(function(t){
     lines.push('지출,'+esc(t.type||'')+',"'+esc(t.desc||'')+'",'+Math.abs(t.amount)+',"'+esc(t.note||'')+'",');
