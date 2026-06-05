@@ -96,6 +96,8 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:va
 /* OFFER PANEL */
 .offer-panel{display:none;background:#fff;border:1.5px solid var(--gold);border-radius:var(--r);padding:18px;margin-bottom:14px;box-shadow:var(--sh2)}
 .offer-panel.on{display:block}
+.panel-close{margin-left:auto;padding:5px 12px;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap;flex:none}
+.panel-close:hover{background:#f1f5f9;border-color:#94a3b8;color:#1e293b}
 .offer-title{font-size:15px;font-weight:800;color:var(--gold);margin-bottom:3px;display:flex;align-items:center;gap:6px}
 .offer-sub{font-size:12px;color:var(--muted);margin-bottom:12px}
 .offer-ctrl{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:14px}
@@ -162,6 +164,11 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:va
 .tbl-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:7px}
 .tbl-ttl{font-size:14px;font-weight:700}
 .filters{display:flex;gap:6px}
+.tx-summary{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:5px 8px;align-items:center;justify-content:center}
+.tx-chip{display:inline-flex;align-items:center;gap:5px;border-radius:14px;padding:3px 10px;font-size:11px;white-space:nowrap}
+.tx-chip.in{background:var(--green-l)}.tx-chip.ex{background:var(--red-l)}
+.tx-chip b{font-weight:700;color:var(--sub)}
+.tx-chip i{font-style:normal;color:var(--muted);font-weight:600;font-size:10px}
 select{background:var(--bg);border:1.5px solid var(--border2);color:var(--text);padding:5px 9px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}
 .tbl-sc{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;min-width:440px}
@@ -482,13 +489,13 @@ tr:hover td{background:var(--bg)}
 
   <!-- COMPARE PANEL -->
   <div class="cmp-panel" id="cmpPanel">
-    <div class="cmp-title">⚖ 2025 · 2026 연도 비교</div>
+    <div class="cmp-title" style="display:flex;align-items:center;gap:6px">⚖ 2025 · 2026 연도 비교<button class="panel-close" onclick="toggleCmp()">✕ 닫기</button></div>
     <div class="cmp-grid" id="cmpGrid"></div>
   </div>
 
   <!-- OFFER PANEL -->
   <div class="offer-panel" id="offerPanel">
-    <div class="offer-title">🙏 순헌금 비교 현황</div>
+    <div class="offer-title">🙏 순헌금 비교 현황<button class="panel-close" onclick="toggleOffer()">✕ 닫기</button></div>
     <div class="offer-sub" id="offerSub">2026년 순(팀)별 월별 헌금 현황</div>
     <div class="offer-ctrl">
       <div class="offer-tabs">
@@ -568,6 +575,7 @@ tr:hover td{background:var(--bg)}
     <div class="tbl-card">
       <div class="tbl-hd">
         <div><span class="tbl-ttl">거래 내역</span><span id="txCnt" style="font-size:12px;color:var(--muted);margin-left:6px"></span></div>
+        <div id="txSummary" class="tx-summary"></div>
         <div class="filters">
           <select id="fType" onchange="renderTx()"><option value="all">전체</option><option value="income">수입</option><option value="expense">지출</option></select>
           <select id="fCat"  onchange="renderTx()"><option value="all">전체 구분</option></select>
@@ -1045,6 +1053,22 @@ function renderTx() {
   var ft = document.getElementById('fType').value, fc = document.getElementById('fCat').value;
   if (ft !== 'all') txs = txs.filter(function(t) { return t.dir === ft; });
   if (fc !== 'all') txs = txs.filter(function(t) { return t.type === fc; });
+  // ── 구분별 소계 (현재 필터 기준) ──
+  var byCat = {};
+  txs.forEach(function(t) {
+    var k = t.type || '기타';
+    if (!byCat[k]) byCat[k] = { inc:0, exp:0, n:0 };
+    if (t.dir === 'income') byCat[k].inc += t.amount; else byCat[k].exp += Math.abs(t.amount);
+    byCat[k].n++;
+  });
+  var sumHtml = Object.keys(byCat).sort().map(function(k) {
+    var c = byCat[k], parts = [];
+    if (c.inc > 0) parts.push('<span class="up">+'+fmt(c.inc)+'</span>');
+    if (c.exp > 0) parts.push('<span class="dn">-'+fmt(c.exp)+'</span>');
+    var cls = (c.exp > 0 && c.inc === 0) ? 'ex' : 'in';
+    return '<span class="tx-chip '+cls+'"><b>'+esc(k)+'</b> '+parts.join(' ')+' <i>'+c.n+'건</i></span>';
+  }).join('');
+  var sumEl = document.getElementById('txSummary'); if (sumEl) sumEl.innerHTML = sumHtml;
   txs.sort(function(a, b) { return (b.date||'').localeCompare(a.date||''); });
   var cats = [];
   d.months.forEach(function(m) { m.transactions.forEach(function(t) { if (cats.indexOf(t.type) < 0) cats.push(t.type); }); });
@@ -1078,6 +1102,7 @@ function toggleCmp() {
   document.getElementById('cmpBtn').classList.toggle('on', CMP_ON);
   document.getElementById('cmpPanel').classList.toggle('on', CMP_ON);
   if (CMP_ON) { if (!D['2025']) load('2025'); else renderCmp(); }
+  else { window.scrollTo({top:0,behavior:'smooth'}); }
 }
 function renderCmp() {
   var d6 = D['2026'], d5 = D['2025']; if (!d6 || !d5) return;
@@ -1102,7 +1127,7 @@ function toggleOffer() {
   OFFER_ON = !OFFER_ON;
   document.getElementById('offerBtn').classList.toggle('on', OFFER_ON);
   document.getElementById('offerPanel').classList.toggle('on', OFFER_ON);
-  if (!OFFER_ON) return;
+  if (!OFFER_ON) { window.scrollTo({top:0,behavior:'smooth'}); return; }
   var need = []; if (!D['2026']) need.push('2026'); if (OFFER_CMP && !D['2025']) need.push('2025');
   if (!need.length) { renderOffer(); return; }
   showLoader(true, '순헌금 데이터 불러오는 중...');
