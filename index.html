@@ -167,10 +167,10 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:va
 .tbl-ttl{font-size:14px;font-weight:700}
 .filters{display:flex;gap:6px}
 .tx-summary{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:5px 8px;align-items:center;justify-content:center}
-.tx-chip{display:inline-flex;align-items:center;gap:5px;border-radius:14px;padding:3px 10px;font-size:11px;white-space:nowrap}
+.tx-chip{display:inline-flex;align-items:center;gap:5px;border-radius:14px;padding:3px 10px;font-size:14px;white-space:nowrap}
 .tx-chip.in{background:var(--green-l)}.tx-chip.ex{background:var(--red-l)}
 .tx-chip b{font-weight:700;color:var(--sub)}
-.tx-chip i{font-style:normal;color:var(--muted);font-weight:600;font-size:10px}
+.tx-chip i{font-style:normal;color:var(--muted);font-weight:600;font-size:13px}
 select{background:var(--bg);border:1.5px solid var(--border2);color:var(--text);padding:5px 9px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}
 .tbl-sc{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;min-width:440px}
@@ -472,7 +472,7 @@ tr:hover td{background:var(--bg)}
     </div>
     <div class="hd-sep"></div>
     <button class="hd-btn" id="cmpBtn"   onclick="toggleCmp()">⚖ 연도비교</button>
-    <button class="hd-btn" id="offerBtn" onclick="toggleOffer()">🙏 순헌금비교</button>
+    <button class="hd-btn" id="offerBtn" onclick="toggleOffer()">🙏 순헌금관련</button>
     <button class="hd-btn" onclick="openRpt()">📄 월별보고서</button>
     <button class="hd-btn" id="auditBtn" onclick="openAudit()">📋 감사자료</button>
     <div class="hd-sep"></div>
@@ -529,6 +529,7 @@ tr:hover td{background:var(--bg)}
         <button class="otab on" id="otab-sun"     onclick="switchOTab('sun',this)">🏷 순별 보기</button>
         <button class="otab"    id="otab-monthly" onclick="switchOTab('monthly',this)">📅 월별 합계</button>
         <button class="otab"    id="otab-weekly"  onclick="switchOTab('weekly',this)">📆 주차별 순헌금</button>
+        <button class="otab"    id="otab-refund"  onclick="switchOTab('refund',this)">💸 순헌금 월별 환급금</button>
       </div>
       <button class="offer-cmp-btn" id="offerCmpBtn" onclick="toggleOfferCmp()">⚖ 2025년 비교</button>
     </div>
@@ -539,6 +540,9 @@ tr:hover td{background:var(--bg)}
     </div>
     <div id="offerViewWeekly" style="display:none">
       <div id="offerWeeklyContent"></div>
+    </div>
+    <div id="offerViewRefund" style="display:none">
+      <div id="offerRefundContent"></div>
     </div>
   </div>
 
@@ -1226,6 +1230,7 @@ function switchOTab(t, btn) {
   document.getElementById('offerViewSun').style.display     = t === 'sun'     ? 'block' : 'none';
   document.getElementById('offerViewMonthly').style.display = t === 'monthly' ? 'block' : 'none';
   document.getElementById('offerViewWeekly').style.display  = t === 'weekly'  ? 'block' : 'none';
+  document.getElementById('offerViewRefund').style.display  = t === 'refund'  ? 'block' : 'none';
   renderOffer();
 }
 function toggleOfferCmp() {
@@ -1248,6 +1253,7 @@ function renderOffer() {
   var d5 = OFFER_CMP ? D['2025'] : null;
   if (OFFER_TAB === 'sun') renderOfferSun(d6, d5);
   else if (OFFER_TAB === 'monthly') renderOfferMonthly(d6, d5);
+  else if (OFFER_TAB === 'refund') renderOfferRefund();
   else renderOfferWeekly(d6, d5);
 }
 /* 순헌금 판별: 구분(type)이 '순헌금'인 수입만 헌금으로 인정. 예금이자 등 기타수입은 제외 */
@@ -1333,6 +1339,14 @@ function renderOfferMonthly(d6, d5) {
   CHARTS.offerChart = new Chart(document.getElementById('offerChart'),{
     type:'bar',data:{labels:MN,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
+      onClick:function(evt,els){
+        if(!els||!els.length)return;
+        var el=els[0], dsList=CHARTS.offerChart.data.datasets;
+        var lbl=(dsList[el.datasetIndex]&&dsList[el.datasetIndex].label)||'';
+        var yr=(lbl.indexOf('2025')>=0)?'2025':'2026';
+        jumpToOfferTx(el.index+1, yr);
+      },
+      onHover:function(evt,els){ if(evt&&evt.native&&evt.native.target) evt.native.target.style.cursor=els.length?'pointer':'default'; },
       plugins:{legend:{labels:{color:'#475569',font:{size:12},usePointStyle:true}}},
       scales:{x:{ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}},
         y:{ticks:{color:'#94a3b8',font:{size:11},callback:function(v){return fmtS(v);}},grid:{color:'rgba(0,0,0,.05)'},border:{display:false}}}}
@@ -1354,6 +1368,41 @@ function renderOfferMonthly(d6, d5) {
   if(inc5)rows+='<td>'+fmt(t5)+'</td><td class="'+ct+'">'+(dft>0?'+':'')+fmt(dft)+'</td><td>'+(pt!=='—'?(dft>0?'+':'')+pt+'%':pt)+'</td>';
   rows+='<td></td></tr>';
   document.getElementById('offerMBody').innerHTML=rows;
+}
+/* 월별 합계 막대 클릭 → 아래 거래내역을 '해당 월의 순헌금'으로 필터링 + 스크롤 */
+function jumpToOfferTx(month, yr){
+  if(yr && yr!==CY){
+    if(!D[yr]){
+      showLoader(true, yr+'년 데이터 불러오는 중...');
+      google.script.run
+        .withSuccessHandler(function(res){D[yr]=res;showLoader(false);switchYear(yr);jumpToOfferTx(month,null);})
+        .withFailureHandler(function(){showLoader(false);})
+        .getDataForYear(yr);
+      return;
+    }
+    switchYear(yr);
+  }
+  CM = month;
+  // 월 칩 활성화 (index 0=전체, N=N월)
+  var mos=document.querySelectorAll('.mo');
+  mos.forEach(function(b){b.classList.remove('on');});
+  if(mos[month]) mos[month].classList.add('on');
+  // 하단 뷰를 '거래내역'으로 전환
+  CV='tx';
+  var vts=document.querySelectorAll('.vt');
+  vts.forEach(function(b){b.classList.remove('on');});
+  if(vts.length) vts[vts.length-1].classList.add('on');
+  var map={monthly:'vMonthly',weekly:'vWeekly',cat:'vCat',tx:'vTx'};
+  Object.keys(map).forEach(function(k){var el=document.getElementById(map[k]);if(el)el.style.display=(k==='tx'?'block':'none');});
+  // 1차 렌더로 구분(fCat) 옵션 채운 뒤, '순헌금'으로 필터 → 2차 렌더
+  var ft=document.getElementById('fType'); if(ft) ft.value='income';
+  var fc=document.getElementById('fCat'); if(fc) fc.value='all';
+  renderTx();
+  if(fc){ fc.value='순헌금'; if(fc.value!=='순헌금') fc.value='all'; }
+  renderTx();
+  // 거래내역 영역으로 스크롤
+  var tgt=document.getElementById('vTx');
+  if(tgt) setTimeout(function(){tgt.scrollIntoView({behavior:'smooth',block:'start'});},80);
 }
 
 /* ── 순헌금 주차별 그룹 설정 ── */
@@ -1513,6 +1562,133 @@ function renderOfferWeekly(d6, d5) {
   html += '</tr></tbody></table></div>';
 
   document.getElementById('offerWeeklyContent').innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   순헌금 월별 환급금 (시트 M열) — 공개 CSV에서 직접 읽어 실시간 반영
+   ▼ 설정: 구글 시트 [파일 → 공유 → 웹에 게시 → 쉼표로 구분된 값(.csv)]로
+     게시한 뒤, 나온 주소를 아래 REFUND_CSV_URL 에 붙여넣고 재배포하세요.
+     비워두면 링크공개 시트의 gviz CSV를 시도합니다(브라우저 CORS로 막힐 수 있음).
+═══════════════════════════════════════════════════════════ */
+var REFUND_CSV_URL = '';
+var REFUND_SHEET_ID = '1rUdwEhQGwHEoCRAjccQdjMuAM7RIZ7FerdDqwjN1Xe4';
+function refundCsvUrl(){
+  return REFUND_CSV_URL || ('https://docs.google.com/spreadsheets/d/'+REFUND_SHEET_ID+'/gviz/tq?tqx=out:csv&gid=0');
+}
+var REFUND_RAW = null;
+function parseCSV(text){
+  var rows=[], row=[], cur='', q=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else { if(c==='"') q=true;
+      else if(c===','){ row.push(cur); cur=''; }
+      else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; }
+      else if(c==='\r'){}
+      else cur+=c; }
+  }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); }
+  return rows;
+}
+function rnum(s){ if(s==null)return 0; var n=parseFloat(String(s).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
+function parseRefundRows(text){
+  // 컬럼: B(1)년도 D(3)월 E(4)날짜 F(5)주차 G(6)구분 H(7)내역 M(12)환급금
+  var rows=parseCSV(text), recs=[];
+  rows.forEach(function(r){
+    if(!r||r.length<13) return;
+    var yr=String(r[1]||'').trim();
+    if(!/^\d{4}$/.test(yr)) return;
+    if(String(r[6]||'').replace(/\s/g,'')!=='순헌금') return;
+    var refund=rnum(r[12]); if(!refund) return;
+    var month=parseInt(String(r[3]||'').replace(/[^0-9]/g,''),10);
+    if(!month){ var mm=String(r[4]||'').match(/\d{4}-(\d{2})-/); if(mm)month=parseInt(mm[1],10); }
+    var week=parseInt(String(r[5]||'').replace(/[^0-9]/g,''),10)||1;
+    recs.push({year:yr, month:month||0, week:week, raw:String(r[7]||'').trim(), refund:refund});
+  });
+  return recs;
+}
+function loadRefund(cb){
+  if(REFUND_RAW){ cb(); return; }
+  document.getElementById('offerRefundContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)">환급금 데이터 불러오는 중...</div>';
+  fetch(refundCsvUrl(), {cache:'no-store'})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+    .then(function(t){ if(/^\s*</.test(t)) throw new Error('CSV가 아닌 HTML 응답 — 시트 웹 게시 설정 확인'); REFUND_RAW=parseRefundRows(t); cb(); })
+    .catch(function(e){
+      document.getElementById('offerRefundContent').innerHTML=
+        '<div class="empty" style="padding:30px;line-height:1.8">'
+        +'<div class="empty-i">⚙️</div>'
+        +'<div style="font-weight:700;margin-bottom:6px">환급금 데이터를 불러오지 못했습니다</div>'
+        +'<div style="font-size:12px;color:var(--muted)">구글 시트에서 <b>파일 → 공유 → 웹에 게시 → 쉼표로 구분된 값(.csv)</b>로 게시한 뒤,<br>'
+        +'그 주소를 코드 상단 <code>REFUND_CSV_URL</code> 에 붙여넣고 재배포하세요.<br>'
+        +'<span style="color:#b91c1c">('+esc(e.message||String(e))+')</span></div></div>';
+    });
+}
+function renderOfferRefund(){
+  loadRefund(function(){
+    var yr=CY, recs=REFUND_RAW.filter(function(x){return x.year===yr;});
+    var c=document.getElementById('offerRefundContent');
+    if(!recs.length){ c.innerHTML='<div class="empty"><div class="empty-i">📭</div><div>'+yr+'년 환급금(M열) 데이터 없음</div><div style="font-size:12px;color:var(--muted);margin-top:6px">시트 M열에 순헌금 행별 환급금을 입력하면 표시됩니다.</div></div>'; return; }
+    var GRPS=['온유','자비','충성','양선'];
+    var allSubs={}; GRPS.forEach(function(g){allSubs[g]={};});
+    var months={};
+    recs.forEach(function(x){
+      var info=parseGS(x.raw); if(GRPS.indexOf(info.g)<0) return;
+      var sub=info.s||'기타';
+      if(!months[x.month]) months[x.month]={};
+      if(!months[x.month][x.week]) months[x.month][x.week]={total:0,byGrp:{},byGrpSub:{}};
+      var w=months[x.month][x.week];
+      w.total+=x.refund;
+      w.byGrp[info.g]=(w.byGrp[info.g]||0)+x.refund;
+      var gsk=info.g+'||'+sub; w.byGrpSub[gsk]=(w.byGrpSub[gsk]||0)+x.refund;
+      allSubs[info.g][sub]=true;
+    });
+    var cols={}; GRPS.forEach(function(g){ cols[g]=Object.keys(allSubs[g]).sort(function(a,b){var ia=SUN.indexOf(a),ib=SUN.indexOf(b);if(ia<0)ia=99;if(ib<0)ib=99;return ia-ib;}); });
+    var mList=Object.keys(months).map(Number).sort(function(a,b){return a-b;});
+
+    var html='<button class="wk-print-btn" onclick="printRefund()">🖨 환급금 인쇄</button>';
+    html+='<div style="overflow-x:auto"><table class="offer-tbl" id="refundTbl"><thead>';
+    html+='<tr><th rowspan="2" style="text-align:left;background:#f8fafc">월 / 주차</th><th rowspan="2" style="background:#f8fafc">합계</th>';
+    GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<th colspan="'+(1+cols[g].length)+'" class="th-'+gc+'" style="text-align:center">'+(GRP_ICON2[g]||'')+'&nbsp;'+esc(g)+'</th>'; });
+    html+='</tr><tr>';
+    GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<th class="th-'+gc+'" style="font-size:10px;font-weight:800">소계</th>'; cols[g].forEach(function(sub){ html+='<th class="th-'+gc+'" style="font-size:10px;font-weight:600;opacity:.85">'+esc(sub)+'</th>'; }); });
+    html+='</tr></thead><tbody>';
+
+    var gTot=0, gGrp={}, gSub={}; GRPS.forEach(function(g){gGrp[g]=0;cols[g].forEach(function(sub){gSub[g+'||'+sub]=0;});});
+    mList.forEach(function(mon){
+      var weeks=Object.keys(months[mon]).map(Number).sort(function(a,b){return a-b;});
+      var mTot=0, mGrp={}, mSub={}; GRPS.forEach(function(g){mGrp[g]=0;cols[g].forEach(function(sub){mSub[g+'||'+sub]=0;});});
+      weeks.forEach(function(wn){
+        var w=months[mon][wn]; mTot+=w.total; gTot+=w.total;
+        html+='<tr><td style="text-align:left;font-weight:600;color:var(--sub);white-space:nowrap">'+MN[mon-1]+' '+wn+'주차</td><td style="font-weight:700;text-align:right">'+fmt(w.total)+'</td>';
+        GRPS.forEach(function(g){
+          var gc=GRP_CLASS[g]||'', sc=w.byGrp[g]||0; mGrp[g]+=sc; gGrp[g]+=sc;
+          html+='<td class="td-'+gc+'" style="font-weight:700;text-align:right">'+(sc?fmt(sc):'<span style="color:var(--muted)">—</span>')+'</td>';
+          cols[g].forEach(function(sub){ var gsk=g+'||'+sub, v=w.byGrpSub[gsk]||0; mSub[gsk]+=v; gSub[gsk]+=v; html+='<td class="td-'+gc+'-sub" style="text-align:right">'+(v?fmt(v):'<span style="color:var(--muted)">—</span>')+'</td>'; });
+        });
+        html+='</tr>';
+      });
+      html+='<tr style="background:#fff7ed;border-top:1px solid #fdba74"><td style="text-align:left;font-weight:800;color:#9a3412;white-space:nowrap">'+MN[mon-1]+' 합계</td><td style="font-weight:800;text-align:right;color:#9a3412">'+fmt(mTot)+'</td>';
+      GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<td class="td-'+gc+'" style="font-weight:800;text-align:right">'+(mGrp[g]?fmt(mGrp[g]):'—')+'</td>'; cols[g].forEach(function(sub){var gsk=g+'||'+sub;html+='<td class="td-'+gc+'-sub" style="font-weight:700;text-align:right">'+(mSub[gsk]?fmt(mSub[gsk]):'—')+'</td>';}); });
+      html+='</tr>';
+    });
+    html+='<tr style="border-top:2px solid #94a3b8;background:#f8fafc"><td style="text-align:left;font-weight:800;color:#1e293b">전체 합계</td><td style="font-weight:800;text-align:right;color:#1e293b">'+fmt(gTot)+'</td>';
+    GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||'', col=GRP_COLOR[g]||'#1e293b'; html+='<td class="td-'+gc+'" style="font-weight:800;text-align:right;color:'+col+'">'+(gGrp[g]?fmt(gGrp[g]):'—')+'</td>'; cols[g].forEach(function(sub){var gsk=g+'||'+sub;html+='<td class="td-'+gc+'-sub" style="font-weight:700;text-align:right;color:'+col+'">'+(gSub[gsk]?fmt(gSub[gsk]):'—')+'</td>';}); });
+    html+='</tr></tbody></table></div>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 시트 M열(환급금)을 순헌금 행 기준으로 다락방·순·주차별 집계합니다. 시트 수정 후 새로고침하면 반영됩니다.</div>';
+    c.innerHTML=html;
+  });
+}
+function printRefund(){
+  var tbl=document.getElementById('refundTbl'); if(!tbl){alert('먼저 환급금 탭을 열어주세요.');return;}
+  var win=window.open('','_blank','width=1000,height=720');
+  win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>순헌금 월별 환급금</title>');
+  win.document.write('<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">');
+  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:"Noto Sans KR",sans-serif}body{background:#fff;padding:16px}.print-title{text-align:center;font-size:18px;font-weight:800;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:5px 7px;border:1px solid #cbd5e1;text-align:center}th{background:#f8fafc;font-weight:700}@page{size:A4 landscape;margin:10mm}</style></head><body>');
+  win.document.write('<div class="print-title">'+CY+'년 순헌금 월별 환급금</div>');
+  win.document.write('<table>'+tbl.innerHTML+'</table>');
+  win.document.write('</body></html>');
+  win.document.close();
+  setTimeout(function(){win.print();},500);
 }
 function openDrw(mon) {
   DRW_MON=mon; DRW_TAB='all';
