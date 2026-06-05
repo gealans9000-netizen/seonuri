@@ -241,6 +241,9 @@ tr:hover td{background:var(--bg)}
 .rpt-sel{font-size:13px;padding:4px 8px;border-radius:7px;border:1px solid var(--border2);background:var(--bg)}
 .audit-tab{font-size:12px;font-weight:700;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--bg);color:var(--sub);cursor:pointer;font-family:var(--font);transition:all .15s}
 .audit-tab.on{background:#173404;border-color:#173404;color:#fff}
+.rf-ctrl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.rf-vbtn{font-size:12px;font-weight:700;padding:5px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--sub);cursor:pointer;font-family:var(--font);transition:all .15s}
+.rf-vbtn.on{background:#9a3412;border-color:#9a3412;color:#fff}
 .ad-doc{padding:6px 4px 14px}
 .ad-sign{border-collapse:collapse;margin:0 0 12px auto;font-size:11px}
 .ad-sign td{border:1px solid var(--border2);text-align:center}
@@ -1212,7 +1215,7 @@ function toggleOffer() {
   OFFER_ON = !OFFER_ON;
   document.getElementById('offerBtn').classList.toggle('on', OFFER_ON);
   document.getElementById('offerPanel').classList.toggle('on', OFFER_ON);
-  if (!OFFER_ON) { window.scrollTo({top:0,behavior:'smooth'}); return; }
+  if (!OFFER_ON) { resetTxDefault(); window.scrollTo({top:0,behavior:'smooth'}); return; }
   var need = []; if (!D['2026']) need.push('2026'); if (OFFER_CMP && !D['2025']) need.push('2025');
   if (!need.length) { renderOffer(); return; }
   showLoader(true, '순헌금 데이터 불러오는 중...');
@@ -1368,6 +1371,16 @@ function renderOfferMonthly(d6, d5) {
   if(inc5)rows+='<td>'+fmt(t5)+'</td><td class="'+ct+'">'+(dft>0?'+':'')+fmt(dft)+'</td><td>'+(pt!=='—'?(dft>0?'+':'')+pt+'%':pt)+'</td>';
   rows+='<td></td></tr>';
   document.getElementById('offerMBody').innerHTML=rows;
+}
+/* 거래내역을 기본값으로 초기화 (월: 전체, 구분: 전체/전체 구분) */
+function resetTxDefault(){
+  CM='all';
+  var mos=document.querySelectorAll('.mo');
+  mos.forEach(function(b){b.classList.remove('on');});
+  if(mos[0]) mos[0].classList.add('on');   // 전체
+  var ft=document.getElementById('fType'); if(ft) ft.value='all';
+  var fc=document.getElementById('fCat');  if(fc) fc.value='all';
+  renderView();
 }
 /* 월별 합계 막대 클릭 → 아래 거래내역을 '해당 월의 순헌금'으로 필터링 + 스크롤 */
 function jumpToOfferTx(month, yr){
@@ -1576,6 +1589,7 @@ function refundCsvUrl(){
   return REFUND_CSV_URL || ('https://docs.google.com/spreadsheets/d/'+REFUND_SHEET_ID+'/gviz/tq?tqx=out:csv&gid=0');
 }
 var REFUND_RAW = null;
+var REFUND_VIEW = 'all';   // 'all'=주차+월 모두, 'month'=월 합계만
 function parseCSV(text){
   var rows=[], row=[], cur='', q=false;
   for(var i=0;i<text.length;i++){
@@ -1642,10 +1656,13 @@ function renderOfferRefund(){
       var gsk=info.g+'||'+sub; w.byGrpSub[gsk]=(w.byGrpSub[gsk]||0)+x.refund;
       allSubs[info.g][sub]=true;
     });
-    var cols={}; GRPS.forEach(function(g){ cols[g]=Object.keys(allSubs[g]).sort(function(a,b){var ia=SUN.indexOf(a),ib=SUN.indexOf(b);if(ia<0)ia=99;if(ib<0)ib=99;return ia-ib;}); });
+    var FIXED_SUBS={'온유':['1순','2순','3순'],'자비':['1순','2순','3순'],'충성':['1순','2순','3순','4순','5순'],'양선':['1순','2순','3순']};
+    var cols={}; GRPS.forEach(function(g){ cols[g]=(FIXED_SUBS[g]||[]).slice(); });
     var mList=Object.keys(months).map(Number).sort(function(a,b){return a-b;});
 
-    var html='<button class="wk-print-btn" onclick="printRefund()">🖨 환급금 인쇄</button>';
+    var html='<div class="rf-ctrl"><button id="rfBtnAll" class="rf-vbtn'+(REFUND_VIEW==='all'?' on':'')+'" onclick="setRefundView(\'all\')">📋 전체보기 (주차+월)</button>'
+      +'<button id="rfBtnMonth" class="rf-vbtn'+(REFUND_VIEW==='month'?' on':'')+'" onclick="setRefundView(\'month\')">📅 월 합계만 보기</button>'
+      +'<button class="wk-print-btn" onclick="printRefund()">🖨 환급금 인쇄</button></div>';
     html+='<div style="overflow-x:auto"><table class="offer-tbl" id="refundTbl"><thead>';
     html+='<tr><th rowspan="2" style="text-align:left;background:#f8fafc">월 / 주차</th><th rowspan="2" style="background:#f8fafc">합계</th>';
     GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<th colspan="'+(1+cols[g].length)+'" class="th-'+gc+'" style="text-align:center">'+(GRP_ICON2[g]||'')+'&nbsp;'+esc(g)+'</th>'; });
@@ -1659,7 +1676,7 @@ function renderOfferRefund(){
       var mTot=0, mGrp={}, mSub={}; GRPS.forEach(function(g){mGrp[g]=0;cols[g].forEach(function(sub){mSub[g+'||'+sub]=0;});});
       weeks.forEach(function(wn){
         var w=months[mon][wn]; mTot+=w.total; gTot+=w.total;
-        html+='<tr><td style="text-align:left;font-weight:600;color:var(--sub);white-space:nowrap">'+MN[mon-1]+' '+wn+'주차</td><td style="font-weight:700;text-align:right">'+fmt(w.total)+'</td>';
+        html+='<tr class="rf-wk"><td style="text-align:left;font-weight:600;color:var(--sub);white-space:nowrap">'+MN[mon-1]+' '+wn+'주차</td><td style="font-weight:700;text-align:right">'+fmt(w.total)+'</td>';
         GRPS.forEach(function(g){
           var gc=GRP_CLASS[g]||'', sc=w.byGrp[g]||0; mGrp[g]+=sc; gGrp[g]+=sc;
           html+='<td class="td-'+gc+'" style="font-weight:700;text-align:right">'+(sc?fmt(sc):'<span style="color:var(--muted)">—</span>')+'</td>';
@@ -1676,16 +1693,30 @@ function renderOfferRefund(){
     html+='</tr></tbody></table></div>';
     html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 시트 M열(환급금)을 순헌금 행 기준으로 다락방·순·주차별 집계합니다. 시트 수정 후 새로고침하면 반영됩니다.</div>';
     c.innerHTML=html;
+    setRefundView(REFUND_VIEW);
   });
+}
+function setRefundView(mode){
+  REFUND_VIEW = (mode==='month')?'month':'all';
+  var ba=document.getElementById('rfBtnAll'), bm=document.getElementById('rfBtnMonth');
+  if(ba) ba.classList.toggle('on', REFUND_VIEW==='all');
+  if(bm) bm.classList.toggle('on', REFUND_VIEW==='month');
+  document.querySelectorAll('#refundTbl .rf-wk').forEach(function(tr){ tr.style.display = (REFUND_VIEW==='month'?'none':''); });
 }
 function printRefund(){
   var tbl=document.getElementById('refundTbl'); if(!tbl){alert('먼저 환급금 탭을 열어주세요.');return;}
+  var inner=tbl.innerHTML;
+  if(REFUND_VIEW==='month'){
+    var tmp=document.createElement('table'); tmp.innerHTML=inner;
+    tmp.querySelectorAll('.rf-wk').forEach(function(tr){tr.parentNode.removeChild(tr);});
+    inner=tmp.innerHTML;
+  }
   var win=window.open('','_blank','width=1000,height=720');
   win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>순헌금 월별 환급금</title>');
   win.document.write('<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">');
   win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:"Noto Sans KR",sans-serif}body{background:#fff;padding:16px}.print-title{text-align:center;font-size:18px;font-weight:800;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:5px 7px;border:1px solid #cbd5e1;text-align:center}th{background:#f8fafc;font-weight:700}@page{size:A4 landscape;margin:10mm}</style></head><body>');
-  win.document.write('<div class="print-title">'+CY+'년 순헌금 월별 환급금</div>');
-  win.document.write('<table>'+tbl.innerHTML+'</table>');
+  win.document.write('<div class="print-title">'+CY+'년 순헌금 월별 환급금'+(REFUND_VIEW==='month'?' (월 합계)':'')+'</div>');
+  win.document.write('<table>'+inner+'</table>');
   win.document.write('</body></html>');
   win.document.close();
   setTimeout(function(){win.print();},500);
