@@ -146,6 +146,8 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:va
 .ccrd-title{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .chart-hint{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
 .leg{display:flex;gap:12px;font-size:12px;color:var(--muted);font-weight:500;flex-wrap:wrap}
+.leg>span{cursor:pointer;user-select:none;transition:opacity .15s;display:inline-flex;align-items:center}
+.leg>span.off{opacity:.3;text-decoration:line-through}
 .leg-dot{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:3px;vertical-align:middle}
 
 /* WEEKLY */
@@ -538,10 +540,10 @@ tr:hover td{background:var(--bg)}
   <div id="vMonthly">
     <div class="ccrd">
       <div class="ccrd-title">월별 수입 · 지출 / 잔액 추이
-        <div class="leg">
-          <span><span class="leg-dot" style="background:var(--green)"></span>수입</span>
-          <span><span class="leg-dot" style="background:var(--red)"></span>지출</span>
-          <span><span class="leg-dot" style="background:var(--blue);border-radius:50%"></span>잔액</span>
+        <div class="leg" id="monLeg">
+          <span id="legInc" onclick="soloSeries(0)"><span class="leg-dot" style="background:var(--green)"></span>수입</span>
+          <span id="legExp" onclick="soloSeries(1)"><span class="leg-dot" style="background:var(--red)"></span>지출</span>
+          <span id="legBal" onclick="soloSeries(2)"><span class="leg-dot" style="background:var(--blue);border-radius:50%"></span>잔액</span>
         </div>
       </div>
       <div style="position:relative;height:380px"><canvas id="barChart"></canvas></div>
@@ -963,28 +965,55 @@ function renderMonthly() {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
           // 수입 레이블
+          if (chart.getDatasetMeta(0).hidden !== true) {
           ctx.fillStyle = '#059669';
           chart.getDatasetMeta(0).data.forEach(function(bar, i) {
             if (!inc[i]) return;
             ctx.fillText(fmt(inc[i]), bar.x, bar.y - 3);
           });
+          }
           // 지출 레이블
+          if (chart.getDatasetMeta(1).hidden !== true) {
           ctx.fillStyle = '#dc2626';
           chart.getDatasetMeta(1).data.forEach(function(bar, i) {
             if (!exp[i]) return;
             ctx.fillText(fmt(exp[i]), bar.x, bar.y - 3);
           });
+          }
           // 잔액 레이블
+          if (chart.getDatasetMeta(2).hidden !== true) {
           ctx.fillStyle = '#2563eb';
           chart.getDatasetMeta(2).data.forEach(function(pt, i) {
             if (bal[i] === null || bal[i] === undefined) return;
             ctx.fillText(fmt(bal[i]), pt.x, pt.y - 10);
           });
+          }
           ctx.restore();
         }
       }
     }
   });
+  resetMonLeg();
+}
+
+/* 범례 클릭 → 해당 계열만 단독 표시 (같은 항목 다시 누르면 전체 복귀) */
+function soloSeries(idx){
+  var ch=CHARTS.barChart; if(!ch) return;
+  var n=ch.data.datasets.length;
+  function hid(i){return ch.getDatasetMeta(i).hidden===true;}
+  var onlyThis=!hid(idx); for(var j=0;j<n;j++){ if(j!==idx && !hid(j)) onlyThis=false; }
+  for(var i=0;i<n;i++){ ch.getDatasetMeta(i).hidden = onlyThis ? false : (i!==idx); }
+  ch.update();
+  syncMonLeg();
+}
+function syncMonLeg(){
+  var ch=CHARTS.barChart; if(!ch) return;
+  ['legInc','legExp','legBal'].forEach(function(id,i){
+    var el=document.getElementById(id); if(el) el.classList.toggle('off', ch.getDatasetMeta(i).hidden===true);
+  });
+}
+function resetMonLeg(){
+  ['legInc','legExp','legBal'].forEach(function(id){ var el=document.getElementById(id); if(el) el.classList.remove('off'); });
 }
 
 /* ── Weekly ── */
