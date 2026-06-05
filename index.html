@@ -239,6 +239,30 @@ tr:hover td{background:var(--bg)}
 .rpt-modal{background:#fff;border-radius:15px;width:100%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 .rpt-mhd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;gap:7px;background:#f8fafc;border-radius:15px 15px 0 0}
 .rpt-sel{font-size:13px;padding:4px 8px;border-radius:7px;border:1px solid var(--border2);background:var(--bg)}
+.audit-tab{font-size:12px;font-weight:700;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--bg);color:var(--sub);cursor:pointer;font-family:var(--font);transition:all .15s}
+.audit-tab.on{background:#173404;border-color:#173404;color:#fff}
+.ad-doc{padding:6px 4px 14px}
+.ad-sign{border-collapse:collapse;margin:0 0 12px auto;font-size:11px}
+.ad-sign td{border:1px solid var(--border2);text-align:center}
+.ad-sign-h{background:#f8f8c8;font-weight:700;padding:4px 18px;color:#5b5b1e}
+.ad-sign-b{height:40px;min-width:70px}
+.ad-title{text-align:center;font-size:17px;font-weight:800;margin:2px 0;color:var(--text)}
+.ad-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-bottom:8px}
+.ad-tbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.ad-tbl td{border:1px solid var(--border);padding:6px 9px;vertical-align:middle}
+.ad-hd td{font-weight:800;text-align:center}
+.ad-in{background:#e8f4ea;color:#155724}.ad-ex{background:#fdecec;color:#b91c1c}
+.ad-sub td{background:#f1f5f9;color:var(--sub);font-size:12px}
+.ad-r{text-align:right}.ad-amt-in{color:#155724;font-weight:700}.ad-amt-ex{color:#b91c1c;font-weight:700}
+.ad-tot td{background:#f1f5f9;font-weight:800}
+.ad-carry{display:flex;justify-content:space-between;align-items:center;background:#eef4ff;border:1px solid #c7d8f5;border-radius:7px;padding:9px 13px;margin-top:9px;font-weight:800;color:#1e40af;font-size:14px}
+.ad-note{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}.ad-warn{color:#b91c1c;font-weight:700}
+.ad-off{border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:100%}
+.ad-off th,.ad-off td{border:1px solid var(--border);padding:5px 7px;text-align:center}
+.ad-off th{background:#e8f4ea;color:#155724;font-weight:700}
+.ad-off .ad-r{text-align:right}.ad-off .ad-g{font-weight:800;background:#f0fdf4;color:#0f766e}
+.ad-off .ad-z{color:#cbd5e1}.ad-off .ad-sumcol{font-weight:800;color:#1e40af;background:#f1f5f9}
+.ad-off .ad-tot td{background:#f1f5f9;font-weight:800}
 .rtbtn{padding:6px 13px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:opacity .15s;white-space:nowrap}
 .rtbtn.xl{background:#217346;color:#fff}
 .rtbtn.pr{background:#1e40af;color:#fff}
@@ -450,6 +474,7 @@ tr:hover td{background:var(--bg)}
     <button class="hd-btn" id="cmpBtn"   onclick="toggleCmp()">⚖ 연도비교</button>
     <button class="hd-btn" id="offerBtn" onclick="toggleOffer()">🙏 순헌금비교</button>
     <button class="hd-btn" onclick="openRpt()">📄 월별보고서</button>
+    <button class="hd-btn" id="auditBtn" onclick="openAudit()">📋 감사자료</button>
     <div class="hd-sep"></div>
     <button class="hd-btn" onclick="openShare()">💬 카카오공유</button>
     <button class="hd-btn" style="background:rgba(33,115,70,.5);border-color:rgba(255,255,255,.5)" onclick="dlExcel()">📥 엑셀저장</button>
@@ -651,6 +676,33 @@ tr:hover td{background:var(--bg)}
     </div>
     <div class="rpt-body" id="rptBody">
       <div style="text-align:center;padding:60px;color:var(--muted)">데이터 로드 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- AUDIT (감사자료) MODAL -->
+<div class="rpt-ov" id="auditOv" onclick="closeAuditIf(event)">
+  <div class="rpt-modal">
+    <div class="rpt-mhd">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:14px;font-weight:700">📋 감사자료</span>
+        <select id="auditYr" class="rpt-sel" onchange="buildAudit()">
+          <option value="2026">2026년</option>
+          <option value="2025">2025년</option>
+        </select>
+        <div style="display:flex;gap:4px;margin-left:6px">
+          <button class="audit-tab on" id="atab-settle" onclick="switchAuditTab('settle',this)">📑 재정 결산서</button>
+          <button class="audit-tab" id="atab-offer" onclick="switchAuditTab('offer',this)">🙏 순헌금 현황</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="rtbtn pr" onclick="auditPrint()">🖨 인쇄</button>
+        <button class="rtbtn cl" onclick="closeAudit()">✕ 닫기</button>
+      </div>
+    </div>
+    <div class="rpt-body" id="auditBody">
+      <div id="auditSettle"><div style="text-align:center;padding:60px;color:var(--muted)">데이터 로드 중...</div></div>
+      <div id="auditOffer" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -1804,6 +1856,167 @@ function rptPrint(){
   win.document.write('tfoot td{background:#fef9c3;font-weight:800;font-size:12px}.dt-tot-in{text-align:right;color:#059669;font-weight:900}.dt-tot-ex{text-align:right;color:#dc2626;font-weight:900}.dt-tot-bal{text-align:right;color:#1e40af;font-weight:900}');
   win.document.write('</style></head><body>');
   win.document.write(body.innerHTML);
+  win.document.write('</body></html>');
+  win.document.close();
+  setTimeout(function(){win.print();},600);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUDIT (감사자료) — 재정 결산서 + 순헌금 현황 (거래내역 자동 계산)
+═══════════════════════════════════════════════════════════ */
+var AUDIT_TAB='settle';
+function openAudit(){
+  document.getElementById('auditYr').value=CY;
+  document.getElementById('auditOv').classList.add('on');
+  document.body.style.overflow='hidden';
+  buildAudit();
+}
+function closeAudit(){document.getElementById('auditOv').classList.remove('on');document.body.style.overflow='';}
+function closeAuditIf(e){if(e.target===document.getElementById('auditOv'))closeAudit();}
+function switchAuditTab(t,btn){
+  AUDIT_TAB=t;
+  document.querySelectorAll('.audit-tab').forEach(function(b){b.classList.remove('on');}); if(btn)btn.classList.add('on');
+  document.getElementById('auditSettle').style.display = t==='settle'?'block':'none';
+  document.getElementById('auditOffer').style.display  = t==='offer'?'block':'none';
+}
+function auditFmt(n){ if(n==null||isNaN(n))return'0'; return Math.round(n).toLocaleString('ko-KR'); }
+function buildAudit(){
+  var yr=document.getElementById('auditYr').value;
+  var d=D[yr];
+  if(!d){
+    document.getElementById('auditSettle').innerHTML='<div style="text-align:center;padding:60px;color:var(--muted)">데이터 불러오는 중...</div>';
+    showLoader(true, yr+'년 데이터 불러오는 중...');
+    google.script.run
+      .withSuccessHandler(function(res){D[yr]=res;showLoader(false);buildAudit();})
+      .withFailureHandler(function(){showLoader(false);})
+      .getDataForYear(yr);
+    return;
+  }
+  document.getElementById('auditSettle').innerHTML = buildSettlement(d, yr);
+  document.getElementById('auditOffer').innerHTML  = buildOfferStatus(d, yr);
+}
+/* 상단 결재란 (회계/총무/대표장로/담당목사) */
+function auditSignTable(){
+  return '<table class="ad-sign"><tr>'
+    +['회계','총무','대표장로','담당목사'].map(function(x){return '<td class="ad-sign-h">'+x+'</td>';}).join('')
+    +'</tr><tr>'+['','','',''].map(function(){return '<td class="ad-sign-b"></td>';}).join('')+'</tr></table>';
+}
+/* ── 재정 결산서 (연간) ── */
+function buildSettlement(d, yr){
+  var carry=d.janCarryover||0, sunTotal=0;
+  var incOrder=[], incMap={}, expOrder=[], expMap={};
+  d.months.forEach(function(mo){
+    mo.transactions.forEach(function(t){
+      if(t.dir==='income'){
+        if(isOffering(t)){ sunTotal+=t.amount; }
+        else { var k=t.type||'기타'; if(!(k in incMap)){incMap[k]=0;incOrder.push(k);} incMap[k]+=t.amount; }
+      } else if(t.dir==='expense'){
+        var k2=t.type||'기타'; if(!(k2 in expMap)){expMap[k2]=0;expOrder.push(k2);} expMap[k2]+=Math.abs(t.amount);
+      }
+    });
+  });
+  var s=d.summary||{};
+  var incTx=(s.totalIncome!=null)?s.totalIncome:(sunTotal+incOrder.reduce(function(a,k){return a+incMap[k];},0));
+  var expTotal=(s.totalExpense!=null)?s.totalExpense:expOrder.reduce(function(a,k){return a+expMap[k];},0);
+  var incTotal=carry+incTx;
+  var carryNext=incTotal-expTotal;
+  var bankBal=(s.lastBalance>0)?s.lastBalance:((s.calcBalance!=null)?s.calcBalance:carryNext);
+
+  var incRows=[['전기 이월금',carry],['순헌금 (다락방)',sunTotal]];
+  incOrder.forEach(function(k){ incRows.push([k, incMap[k]]); });
+  var expRows=[]; expOrder.forEach(function(k){ expRows.push([k, expMap[k]]); });
+  var maxR=Math.max(incRows.length, expRows.length, 4);
+
+  var h='<div class="ad-doc">';
+  h+=auditSignTable();
+  h+='<div class="ad-title">( 서누리 ) 공동체 '+yr+'년 전체 결산서</div>';
+  h+='<div class="ad-meta"><span>( '+yr+'. 1. 1. ~ '+yr+'. 12. 31. )</span><span>(단위 : 원)</span></div>';
+  h+='<table class="ad-tbl"><colgroup><col><col style="width:120px"><col><col style="width:120px"></colgroup>';
+  h+='<tr class="ad-hd"><td class="ad-in" colspan="2">수입</td><td class="ad-ex" colspan="2">지출</td></tr>';
+  h+='<tr class="ad-sub"><td>적요</td><td class="ad-r">금액</td><td>적요</td><td class="ad-r">금액</td></tr>';
+  for(var i=0;i<maxR;i++){
+    var ir=incRows[i], er=expRows[i];
+    h+='<tr>'
+      +'<td>'+(ir?esc(ir[0]):'')+'</td><td class="ad-r ad-amt-in">'+(ir?auditFmt(ir[1]):'')+'</td>'
+      +'<td>'+(er?esc(er[0]):'')+'</td><td class="ad-r ad-amt-ex">'+(er?auditFmt(er[1]):'')+'</td>'
+      +'</tr>';
+  }
+  h+='<tr class="ad-tot"><td>수입 합계</td><td class="ad-r ad-amt-in">'+auditFmt(incTotal)+'</td>'
+    +'<td>지출 합계</td><td class="ad-r ad-amt-ex">'+auditFmt(expTotal)+'</td></tr>';
+  h+='</table>';
+  h+='<div class="ad-carry"><span>차기 이월금 (= 수입합계 − 지출합계)</span><span>'+auditFmt(carryNext)+' 원</span></div>';
+  h+='<div class="ad-note">[참고] 통장잔액 확인 '+auditFmt(bankBal)+' 원 &nbsp;·&nbsp; '
+    +'전기/차기 이월금은 통장 잔액과 일치해야 합니다. (통장 사본 첨부)';
+  if(Math.abs(bankBal-carryNext)>0) h+=' <span class="ad-warn">⚠ 차기이월금과 통장잔액이 '+auditFmt(Math.abs(bankBal-carryNext))+'원 차이 — 확인 필요</span>';
+  h+='</div>';
+  h+='</div>';
+  return h;
+}
+/* ── 순헌금 현황 (연간, 다락방·순·월별) ── */
+function buildOfferStatus(d, yr){
+  var DG=['온유','충성','자비','양선'];
+  var m=collectSun(d);
+  var byG={}; DG.forEach(function(g){byG[g]=[];});
+  Object.keys(m).forEach(function(k){ if(DG.indexOf(m[k].g)>=0) byG[m[k].g].push(k); });
+  DG.forEach(function(g){ byG[g].sort(function(a,b){var ia=SUN.indexOf(m[a].s),ib=SUN.indexOf(m[b].s);if(ia<0)ia=99;if(ib<0)ib=99;return ia-ib;}); });
+
+  var colTot=new Array(12).fill(0), grand=0;
+  var h='<div class="ad-doc">';
+  h+=auditSignTable();
+  h+='<div class="ad-title">( 서누리 ) 공동체 '+yr+'년 순헌금 현황</div>';
+  h+='<div class="ad-meta"><span></span><span>(단위 : 원)</span></div>';
+  h+='<div style="overflow-x:auto"><table class="ad-off"><thead><tr><th>다락방</th><th>순</th>';
+  for(var mi=0;mi<12;mi++) h+='<th class="ad-r">'+(mi+1)+'월</th>';
+  h+='<th class="ad-r ad-sumcol">계</th></tr></thead><tbody>';
+  DG.forEach(function(g){
+    var keys=byG[g];
+    if(!keys.length){
+      h+='<tr><td class="ad-g">'+g+'</td><td colspan="14" style="color:#94a3b8">—</td></tr>';
+      return;
+    }
+    keys.forEach(function(k,idx){
+      var r=m[k];
+      h+='<tr>';
+      if(idx===0) h+='<td class="ad-g" rowspan="'+keys.length+'">'+g+'</td>';
+      h+='<td>'+esc(r.s)+'</td>';
+      for(var i=0;i<12;i++){ var v=r.months[i]; colTot[i]+=v; h+='<td class="ad-r'+(v?'':' ad-z')+'">'+auditFmt(v)+'</td>'; }
+      grand+=r.total;
+      h+='<td class="ad-r ad-sumcol">'+auditFmt(r.total)+'</td></tr>';
+    });
+  });
+  h+='<tr class="ad-tot"><td colspan="2">전체 합계</td>';
+  for(var j=0;j<12;j++) h+='<td class="ad-r">'+auditFmt(colTot[j])+'</td>';
+  h+='<td class="ad-r ad-sumcol">'+auditFmt(grand)+'</td></tr>';
+  h+='</tbody></table></div></div>';
+  return h;
+}
+/* ── 감사자료 인쇄 (가로) ── */
+function auditPrint(){
+  var settle=document.getElementById('auditSettle').innerHTML;
+  var offer=document.getElementById('auditOffer').innerHTML;
+  var yr=document.getElementById('auditYr').value;
+  var win=window.open('','_blank','width=1000,height=720');
+  win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>감사자료 '+yr+'</title>');
+  win.document.write('<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">');
+  win.document.write('<style>');
+  win.document.write('*{box-sizing:border-box;margin:0;padding:0;font-family:"Noto Sans KR",sans-serif}body{background:#fff;padding:16px}');
+  win.document.write('.ad-doc{margin-bottom:22px;page-break-after:always}.ad-doc:last-child{page-break-after:auto}');
+  win.document.write('.ad-sign{border-collapse:collapse;margin:0 0 12px auto;font-size:11px}.ad-sign td{border:1px solid #94a3b8;text-align:center}');
+  win.document.write('.ad-sign-h{background:#f8f8c8;font-weight:700;padding:4px 18px}.ad-sign-b{height:42px;min-width:74px}');
+  win.document.write('.ad-title{text-align:center;font-size:18px;font-weight:800;margin:2px 0}.ad-meta{display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:8px}');
+  win.document.write('.ad-tbl{width:100%;border-collapse:collapse;font-size:13px}.ad-tbl td{border:1px solid #cbd5e1;padding:6px 9px}');
+  win.document.write('.ad-hd td{font-weight:800;text-align:center}.ad-in{background:#e8f4ea;color:#155724}.ad-ex{background:#fdecec;color:#b91c1c}');
+  win.document.write('.ad-sub td{background:#f8fafc;color:#64748b;font-size:12px}.ad-r{text-align:right}');
+  win.document.write('.ad-amt-in{color:#155724;font-weight:700}.ad-amt-ex{color:#b91c1c;font-weight:700}');
+  win.document.write('.ad-tot td{background:#f1f5f9;font-weight:800}');
+  win.document.write('.ad-carry{display:flex;justify-content:space-between;background:#eef4ff;border:1px solid #c7d8f5;border-radius:5px;padding:9px 12px;margin-top:9px;font-weight:800;color:#1e40af;font-size:14px}');
+  win.document.write('.ad-note{font-size:11px;color:#94a3b8;margin-top:8px}.ad-warn{color:#b91c1c;font-weight:700}');
+  win.document.write('.ad-off{border-collapse:collapse;font-size:11px;width:100%}.ad-off th,.ad-off td{border:1px solid #cbd5e1;padding:5px 7px;text-align:center;white-space:nowrap}');
+  win.document.write('.ad-off th{background:#e8f4ea;color:#155724;font-weight:700}.ad-off .ad-r{text-align:right}.ad-off .ad-g{font-weight:800;background:#f0fdf4;color:#0f766e}');
+  win.document.write('.ad-off .ad-z{color:#cbd5e1}.ad-off .ad-sumcol{font-weight:800;color:#1e40af;background:#f8fafc}.ad-off .ad-tot td{background:#f1f5f9;font-weight:800}');
+  win.document.write('@page{size:A4 landscape;margin:10mm}@media print{body{padding:0}}');
+  win.document.write('</style></head><body>');
+  win.document.write((AUDIT_TAB==='settle')?(settle+offer):(offer+settle));
   win.document.write('</body></html>');
   win.document.close();
   setTimeout(function(){win.print();},600);
