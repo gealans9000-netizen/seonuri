@@ -2,7 +2,8 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#5f6f89">
 <title>서누리공동체(양지온누리교회) 회계현황</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
@@ -112,6 +113,8 @@ html,body{min-height:100vh;background:linear-gradient(180deg,#fdfbf5 0%,#f4efe4 
 .offer-cmp-btn{padding:6px 14px;border-radius:8px;border:1.5px solid var(--purple);background:transparent;color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .18s;white-space:nowrap}
 .offer-cmp-btn.on{background:var(--purple);color:#fff}
 .offer-chart-wrap{position:relative;height:250px;margin-bottom:14px}
+.chart-scroll{position:relative}
+.main-chart-box{position:relative;height:380px}
 .offer-tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:440px}
 .offer-tbl th{background:var(--gold-l);color:var(--gold);font-size:11px;font-weight:700;padding:8px 10px;text-align:right;white-space:nowrap}
 .offer-tbl th:first-child{text-align:left}
@@ -149,6 +152,7 @@ html,body{min-height:100vh;background:linear-gradient(180deg,#fdfbf5 0%,#f4efe4 
 .ccrd{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:17px;margin-bottom:12px;box-shadow:var(--sh)}
 .ccrd-title{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .chart-hint{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
+.m-scroll-hint{display:none}
 .leg{display:flex;gap:12px;font-size:12px;color:var(--muted);font-weight:500;flex-wrap:wrap}
 .leg>span{cursor:pointer;user-select:none;transition:opacity .15s;display:inline-flex;align-items:center}
 .leg>span.off{opacity:.3;text-decoration:line-through}
@@ -413,8 +417,36 @@ tr:hover td{background:var(--bg)}
 }
 
 /* RESPONSIVE */
-@media(max-width:600px){.sum-grid{grid-template-columns:1fr 1fr}.cmp-grid{grid-template-columns:1fr}.sum-val{font-size:16px}.bal-value{font-size:22px}.rp{padding:18px 16px}}
-@media(max-width:380px){.sum-val{font-size:14px}.hd-btn{font-size:11px;padding:4px 8px}}
+@media(max-width:600px){
+  .main{padding:12px}
+  .sum-grid{grid-template-columns:1fr 1fr}
+  .cmp-grid{grid-template-columns:1fr}
+  .sum-val{font-size:16px}
+  .bal-value{font-size:22px}
+  .rp{padding:18px 16px}
+  /* 헤더: 모든 버튼이 줄바꿈되어 보이도록 */
+  .hd-title{font-size:13.5px}
+  .hd-sub{font-size:9px}
+  .hd-r2{gap:5px 6px}
+  .hd-btn{font-size:11.5px;padding:5px 9px}
+  .hd-sep{display:none}
+  /* 탭·월칩: 가로 스크롤 대신 줄바꿈으로 전부 표시 */
+  .mo-row{flex-wrap:wrap;overflow:visible;gap:6px}
+  .vtabs{flex-wrap:wrap;overflow:visible}
+  .vt{flex:1 1 auto;text-align:center}
+  .offer-ctrl{flex-direction:column;align-items:stretch;gap:8px}
+  .offer-tabs{flex-wrap:wrap}
+  .otab{flex:1 1 40%;text-align:center;justify-content:center}
+  .offer-cmp-btn{width:100%}
+  .rf-ctrl{flex-wrap:wrap}
+  .audit-tab{flex:1 1 auto}
+  /* 차트: 12개월 막대는 좌우 스크롤, 가독 폭 확보 */
+  .chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;border-radius:12px}
+  .main-chart-box{min-width:680px;height:300px}
+  .offer-chart-wrap{height:210px}
+  .m-scroll-hint{display:block;text-align:center;font-size:11px;color:var(--muted);margin-top:4px}
+}
+@media(max-width:380px){.sum-val{font-size:14px}.hd-btn{font-size:11px;padding:4px 8px}.main-chart-box{height:280px;min-width:620px}.otab{font-size:11px;padding:6px 8px}}
 </style>
 </head>
 <body>
@@ -582,7 +614,8 @@ tr:hover td{background:var(--bg)}
           <span id="legBal" onclick="soloSeries(2)"><span class="leg-dot" style="background:var(--blue);border-radius:50%"></span>잔액</span>
         </div>
       </div>
-      <div style="position:relative;height:380px"><canvas id="barChart"></canvas></div>
+      <div class="chart-scroll"><div class="main-chart-box"><canvas id="barChart"></canvas></div></div>
+      <div class="m-scroll-hint">↔ 좌우로 넘겨 12개월 전체를 보세요</div>
       <div class="chart-hint">👆 막대/포인트를 터치하면 해당 월 상세 내역이 표시됩니다</div>
       <!-- lineChart는 mixed chart로 통합되어 barChart canvas에 함께 렌더링됨 -->
       <canvas id="lineChart" style="display:none"></canvas>
