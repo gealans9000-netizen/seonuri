@@ -184,13 +184,14 @@ html,body{min-height:100vh;background:linear-gradient(180deg,#fdfbf5 0%,#f4efe4 
 .tx-chip i{font-style:normal;color:var(--muted);font-weight:600;font-size:13px}
 select{background:var(--bg);border:1.5px solid var(--border2);color:var(--text);padding:5px 9px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}
 .tbl-sc{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl-card table{min-width:680px}
 table{width:100%;border-collapse:collapse;min-width:440px}
 th{font-size:11px;color:var(--muted);text-align:left;padding:9px 13px;border-bottom:1.5px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;background:var(--bg)}
 td{font-size:13px;padding:9px 13px;border-bottom:1px solid var(--border)}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:var(--bg)}
-.b-in{display:inline-block;padding:2px 8px;border-radius:18px;font-size:11px;font-weight:700;background:var(--green-l);color:var(--green)}
-.b-ex{display:inline-block;padding:2px 8px;border-radius:18px;font-size:11px;font-weight:700;background:var(--red-l);color:var(--red)}
+.b-in{display:inline-block;padding:2px 8px;border-radius:18px;font-size:11px;font-weight:700;background:var(--green-l);color:var(--green);white-space:nowrap}
+.b-ex{display:inline-block;padding:2px 8px;border-radius:18px;font-size:11px;font-weight:700;background:var(--red-l);color:var(--red);white-space:nowrap}
 .a-in{color:var(--green);font-weight:700}.a-ex{color:var(--red);font-weight:700}
 
 /* CAT BARS */
@@ -1222,9 +1223,9 @@ function renderTx() {
     return '<tr><td style="color:var(--muted);font-size:12px;white-space:nowrap">'+esc(t.date)+'</td>'
       +'<td style="color:var(--muted);font-size:12px">'+esc(String(t.week||''))+'주</td>'
       +'<td><span class="'+(ii?'b-in':'b-ex')+'">'+esc(t.type)+'</span></td>'
-      +'<td style="color:var(--sub)">'+esc(t.desc||'-')+'</td>'
-      +'<td style="text-align:right" class="a-in">'+(ii?fmt(t.amount):'')+'</td>'
-      +'<td style="text-align:right" class="a-ex">'+(!ii?fmt(Math.abs(t.amount)):'')+'</td>'
+      +'<td style="color:var(--sub);white-space:nowrap">'+esc(t.desc||'-')+'</td>'
+      +'<td style="text-align:right;white-space:nowrap" class="a-in">'+(ii?fmt(t.amount):'')+'</td>'
+      +'<td style="text-align:right;white-space:nowrap" class="a-ex">'+(!ii?fmt(Math.abs(t.amount)):'')+'</td>'
       +'<td style="font-size:12px;color:var(--muted)">'+esc(t.note||'')+'</td></tr>';
   }).join('');
 }
