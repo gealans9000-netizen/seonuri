@@ -2,10 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=0.9,minimum-scale=0.5,maximum-scale=3,viewport-fit=cover">
 <meta name="theme-color" content="#5f6f89">
 <title>서누리공동체(양지온누리교회) 회계현황</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
@@ -153,6 +155,7 @@ html,body{min-height:100vh;background:linear-gradient(180deg,#fdfbf5 0%,#f4efe4 
 .ccrd-title{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .chart-hint{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
 .m-scroll-hint{display:none}
+.rfz-btn{font-size:11px;font-weight:700;padding:2px 9px;margin-left:6px;border-radius:7px;border:1px solid var(--border2);background:#fff;color:var(--sub);cursor:pointer;font-family:var(--font)}
 .leg{display:flex;gap:12px;font-size:12px;color:var(--muted);font-weight:500;flex-wrap:wrap}
 .leg>span{cursor:pointer;user-select:none;transition:opacity .15s;display:inline-flex;align-items:center}
 .leg>span.off{opacity:.3;text-decoration:line-through}
@@ -615,7 +618,7 @@ tr:hover td{background:var(--bg)}
         </div>
       </div>
       <div class="chart-scroll"><div class="main-chart-box"><canvas id="barChart"></canvas></div></div>
-      <div class="m-scroll-hint">↔ 좌우로 넘겨 12개월 전체를 보세요</div>
+      <div class="m-scroll-hint">↔ 한 손가락으로 넘기기 · ✌️ 두 손가락으로 확대 <button class="rfz-btn" onclick="if(CHARTS.barChart&&CHARTS.barChart.resetZoom)CHARTS.barChart.resetZoom()">↺ 원래대로</button></div>
       <div class="chart-hint">👆 막대/포인트를 터치하면 해당 월 상세 내역이 표시됩니다</div>
       <!-- lineChart는 mixed chart로 통합되어 barChart canvas에 함께 렌더링됨 -->
       <canvas id="lineChart" style="display:none"></canvas>
@@ -1022,6 +1025,11 @@ function renderMonthly() {
               return ' 잔액: ' + fmt(c.raw);
             }
           }
+        },
+        zoom: {
+          zoom: { pinch: { enabled: true }, wheel: { enabled: true, modifierKey: 'ctrl' }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { minRange: 2 } }
         }
       },
       scales: {
@@ -1822,8 +1830,50 @@ function renderDrwBody() {
 /* ═══════════════════════════════════════════════════════════
    SHARE
 ═══════════════════════════════════════════════════════════ */
-function openShare() {
-  var d=D[CY]; if(!d)return;
+function kNum(n){ return (n||0).toLocaleString('ko-KR'); }
+/* 순별 월별 입금현황 (순헌금) 요약 */
+function buildOfferShare(d){
+  var GRPS=['온유','충성','자비','양선'];
+  var m=collectSun(d);
+  var byG={}; GRPS.forEach(function(g){byG[g]=[];});
+  Object.keys(m).forEach(function(k){ if(GRPS.indexOf(m[k].g)>=0) byG[m[k].g].push(m[k]); });
+  GRPS.forEach(function(g){ byG[g].sort(function(a,b){var ia=SUN.indexOf(a.s),ib=SUN.indexOf(b.s);if(ia<0)ia=99;if(ib<0)ib=99;return ia-ib;}); });
+  var monthTot=new Array(12).fill(0), grand=0;
+  Object.keys(m).forEach(function(k){ if(GRPS.indexOf(m[k].g)>=0){ for(var i=0;i<12;i++)monthTot[i]+=m[k].months[i]; grand+=m[k].total; } });
+  if(grand<=0) return '';
+  var t='\n🙏 순별 월별 입금현황 (순헌금)\n━━━━━━━━━━━━\n';
+  GRPS.forEach(function(g){ if(byG[g].length) t+='['+g+'] '+byG[g].map(function(r){return r.s+' '+kNum(r.total);}).join(' · ')+'\n'; });
+  var mline=monthTot.map(function(v,i){return v>0?MN[i]+' '+fmtS(v):null;}).filter(Boolean).join(' / ');
+  if(mline) t+='· 월별합계: '+mline+'\n';
+  t+='· 순헌금 총계: '+kNum(grand)+'\n';
+  return t;
+}
+/* 환급금 현황 요약 (시트 M열) */
+function buildRefundShare(d, yr){
+  if(!REFUND_RAW) return '\n💸 환급금 현황: (환급금 탭을 한 번 연 뒤 공유하면 포함됩니다)\n';
+  var recs=REFUND_RAW.filter(function(x){return x.year===yr;});
+  if(!recs.length) return '\n💸 환급금 현황: 데이터 없음 (시트 M열 미입력)\n';
+  var GRPS=['온유','충성','자비','양선'];
+  var byKey={}, monthTot=new Array(12).fill(0), grand=0;
+  recs.forEach(function(x){
+    var info=parseGS(x.raw); if(GRPS.indexOf(info.g)<0) return;
+    var key=info.g+'|'+(info.s||'기타');
+    byKey[key]=(byKey[key]||0)+x.refund;
+    if(x.month>=1&&x.month<=12) monthTot[x.month-1]+=x.refund;
+    grand+=x.refund;
+  });
+  var t='\n💸 환급금 현황\n━━━━━━━━━━━━\n';
+  GRPS.forEach(function(g){
+    var subs=Object.keys(byKey).filter(function(k){return k.indexOf(g+'|')===0;})
+      .sort(function(a,b){var ia=SUN.indexOf(a.split('|')[1]),ib=SUN.indexOf(b.split('|')[1]);if(ia<0)ia=99;if(ib<0)ib=99;return ia-ib;});
+    if(subs.length) t+='['+g+'] '+subs.map(function(k){return k.split('|')[1]+' '+kNum(byKey[k]);}).join(' · ')+'\n';
+  });
+  var mline=monthTot.map(function(v,i){return v>0?MN[i]+' '+fmtS(v):null;}).filter(Boolean).join(' / ');
+  if(mline) t+='· 월별합계: '+mline+'\n';
+  t+='· 환급금 총계: '+kNum(grand)+'\n';
+  return t;
+}
+function buildShareText(d){
   var s=d.summary, bal=s.lastBalance>0?s.lastBalance:s.calcBalance;
   var now=new Date();
   var txt='👑 '+CY+'년 서누리공동체(양지온누리교회) 회계현황\n━━━━━━━━━━━━\n';
@@ -1833,9 +1883,16 @@ function openShare() {
   d.months.filter(function(m){return m.income||m.expense;}).forEach(function(m){
     txt+=MN[m.month-1]+': 수입 '+fmtS(m.income)+' / 지출 '+fmtS(m.expense)+'\n';
   });
+  txt+=buildOfferShare(d);
+  txt+=buildRefundShare(d, CY);
   txt+='\n✅ '+now.getFullYear()+'.'+(now.getMonth()+1)+'.'+now.getDate()+' 기준';
-  document.getElementById('sharePre').textContent=txt;
+  return txt;
+}
+function openShare() {
+  var d=D[CY]; if(!d)return;
+  document.getElementById('sharePre').textContent=buildShareText(d);
   document.getElementById('shareModal').classList.add('on');
+  if(!REFUND_RAW){ loadRefund(function(){ var dd=D[CY]; if(dd) document.getElementById('sharePre').textContent=buildShareText(dd); }); }
 }
 function closeShare(){document.getElementById('shareModal').classList.remove('on');}
 function closeShareIf(e){if(e.target===document.getElementById('shareModal'))closeShare();}
