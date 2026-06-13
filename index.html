@@ -572,7 +572,7 @@ tr:hover td{background:var(--bg)}
         <button class="otab on" id="otab-sun"     onclick="switchOTab('sun',this)">🏷 순별 보기</button>
         <button class="otab"    id="otab-monthly" onclick="switchOTab('monthly',this)">📅 월별 합계</button>
         <button class="otab"    id="otab-weekly"  onclick="switchOTab('weekly',this)">📆 주차별 순헌금</button>
-        <button class="otab"    id="otab-refund"  onclick="switchOTab('refund',this)">💸 순헌금 월별 환급금</button>
+        <button class="otab"    id="otab-refund"  onclick="switchOTab('refund',this)">💸 순헌금 환급(40%)</button>
       </div>
       <button class="offer-cmp-btn" id="offerCmpBtn" onclick="toggleOfferCmp()">⚖ 2025년 비교</button>
     </div>
@@ -1644,7 +1644,9 @@ function refundCsvUrl(){
   return REFUND_CSV_URL || ('https://docs.google.com/spreadsheets/d/'+REFUND_SHEET_ID+'/gviz/tq?tqx=out:csv&gid=0');
 }
 var REFUND_RAW = null;
-var REFUND_VIEW = 'all';   // 'all'=주차+월 모두, 'month'=월 합계만
+var REFUND_VIEW = 'week';   // 'week'=주차별 상세, 'sum'=순별 누계
+var REFUND_GRPS=['온유','충성','자비','양선'];
+var REFUND_SUBS={'온유':['1순','2순','3순'],'충성':['1순','2순','3순','4순','5순'],'자비':['1순','2순','3순'],'양선':['1순','2순','3순']};
 function parseCSV(text){
   var rows=[], row=[], cur='', q=false;
   for(var i=0;i<text.length;i++){
@@ -1661,18 +1663,24 @@ function parseCSV(text){
 }
 function rnum(s){ if(s==null)return 0; var n=parseFloat(String(s).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
 function parseRefundRows(text){
-  // 컬럼: B(1)년도 D(3)월 E(4)날짜 F(5)주차 G(6)구분 H(7)내역 M(12)환급금
+  // 컬럼: B(1)년도 D(3)월 E(4)날짜 F(5)주차 G(6)구분 H(7)내역 I(8)수입 M(12)환급40% N(13)완료여부
   var rows=parseCSV(text), recs=[];
   rows.forEach(function(r){
     if(!r||r.length<13) return;
     var yr=String(r[1]||'').trim();
     if(!/^\d{4}$/.test(yr)) return;
-    if(String(r[6]||'').replace(/\s/g,'')!=='순헌금') return;
-    var refund=rnum(r[12]); if(!refund) return;
+    if(String(r[6]||'').replace(/\s/g,'')!=='순헌금') return;     // 순헌금 입금 행만
+    var done=String(r[13]||'').trim();
+    if(done.replace(/\s/g,'')==='적용제외') return;               // 적용제외(6/10 이전) 제외
+    var refund=rnum(r[12]); if(refund<=0) return;                 // 40% 환급 대상만
+    var amount=rnum(r[8]);                                        // 원금 입금액
     var month=parseInt(String(r[3]||'').replace(/[^0-9]/g,''),10);
     if(!month){ var mm=String(r[4]||'').match(/\d{4}-(\d{2})-/); if(mm)month=parseInt(mm[1],10); }
     var week=parseInt(String(r[5]||'').replace(/[^0-9]/g,''),10)||1;
-    recs.push({year:yr, month:month||0, week:week, raw:String(r[7]||'').trim(), refund:refund});
+    var info=parseGS(String(r[7]||'').trim());
+    recs.push({year:yr, month:month||0, week:week, date:String(r[4]||'').trim(),
+      raw:String(r[7]||'').trim(), grp:info.g, sun:info.s||'기타',
+      amount:amount, refund:refund, done:done});
   });
   return recs;
 }
@@ -1692,86 +1700,104 @@ function loadRefund(cb){
         +'<span style="color:#b91c1c">('+esc(e.message||String(e))+')</span></div></div>';
     });
 }
+function rfDoneBadge(done, cnt){
+  if(!cnt) return '<span style="color:var(--muted)">—</span>';
+  if(done>=cnt) return '<span style="color:#059669;font-weight:800">✓ 완료</span>';
+  if(done>0)   return '<span style="color:#d97706;font-weight:800">부분 '+done+'/'+cnt+'</span>';
+  return '<span style="color:#b45309;font-weight:700;background:#fef3c7;padding:1px 7px;border-radius:8px">미완료</span>';
+}
+function rfSunLabel(g,s){ return (GRP_ICON2[g]||'')+' '+g+' '+s; }
 function renderOfferRefund(){
   loadRefund(function(){
-    var yr=CY, recs=REFUND_RAW.filter(function(x){return x.year===yr;});
+    var yr=CY, recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0;});
     var c=document.getElementById('offerRefundContent');
-    if(!recs.length){ c.innerHTML='<div class="empty"><div class="empty-i">📭</div><div>'+yr+'년 환급금(M열) 데이터 없음</div><div style="font-size:12px;color:var(--muted);margin-top:6px">시트 M열에 순헌금 행별 환급금을 입력하면 표시됩니다.</div></div>'; return; }
-    var GRPS=['온유','자비','충성','양선'];
-    var allSubs={}; GRPS.forEach(function(g){allSubs[g]={};});
-    var months={};
-    recs.forEach(function(x){
-      var info=parseGS(x.raw); if(GRPS.indexOf(info.g)<0) return;
-      var sub=info.s||'기타';
-      if(!months[x.month]) months[x.month]={};
-      if(!months[x.month][x.week]) months[x.month][x.week]={total:0,byGrp:{},byGrpSub:{}};
-      var w=months[x.month][x.week];
-      w.total+=x.refund;
-      w.byGrp[info.g]=(w.byGrp[info.g]||0)+x.refund;
-      var gsk=info.g+'||'+sub; w.byGrpSub[gsk]=(w.byGrpSub[gsk]||0)+x.refund;
-      allSubs[info.g][sub]=true;
-    });
-    var FIXED_SUBS={'온유':['1순','2순','3순'],'자비':['1순','2순','3순'],'충성':['1순','2순','3순','4순','5순'],'양선':['1순','2순','3순']};
-    var cols={}; GRPS.forEach(function(g){ cols[g]=(FIXED_SUBS[g]||[]).slice(); });
-    var mList=Object.keys(months).map(Number).sort(function(a,b){return a-b;});
+    var head='<div class="rf-ctrl">'
+      +'<button id="rfBtnWeek" class="rf-vbtn'+(REFUND_VIEW==='week'?' on':'')+'" onclick="setRefundView(\'week\')">📅 주차별 상세</button>'
+      +'<button id="rfBtnSum" class="rf-vbtn'+(REFUND_VIEW==='sum'?' on':'')+'" onclick="setRefundView(\'sum\')">🔢 순별 누계</button>'
+      +'<button class="wk-print-btn" onclick="printRefund()">🖨 인쇄</button></div>';
+    if(!recs.length){
+      c.innerHTML=head+'<div class="empty"><div class="empty-i">📭</div><div>'+yr+'년 순헌금 환급 대상 없음</div>'
+        +'<div style="font-size:12px;color:var(--muted);margin-top:6px">2026-06-10부터 적용됩니다. 시트 M열(40% 환급액)이 채워진 순헌금 행만 집계합니다.</div></div>';
+      return;
+    }
+    var html=head;
+    html+='<table class="offer-tbl" id="refundTbl"><thead><tr>'
+      +'<th style="text-align:left">순</th>'
+      +'<th style="text-align:right">입금액 (원금)</th>'
+      +'<th style="text-align:right">환급 40%</th>'
+      +'<th style="text-align:center">이체 완료</th></tr></thead><tbody>';
 
-    var html='<div class="rf-ctrl"><button id="rfBtnAll" class="rf-vbtn'+(REFUND_VIEW==='all'?' on':'')+'" onclick="setRefundView(\'all\')">📋 전체보기 (주차+월)</button>'
-      +'<button id="rfBtnMonth" class="rf-vbtn'+(REFUND_VIEW==='month'?' on':'')+'" onclick="setRefundView(\'month\')">📅 월 합계만 보기</button>'
-      +'<button class="wk-print-btn" onclick="printRefund()">🖨 환급금 인쇄</button></div>';
-    html+='<div style="overflow-x:auto"><table class="offer-tbl" id="refundTbl"><thead>';
-    html+='<tr><th rowspan="2" style="text-align:left;background:#f8fafc">월 / 주차</th><th rowspan="2" style="background:#f8fafc">합계</th>';
-    GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<th colspan="'+(1+cols[g].length)+'" class="th-'+gc+'" style="text-align:center">'+(GRP_ICON2[g]||'')+'&nbsp;'+esc(g)+'</th>'; });
-    html+='</tr><tr>';
-    GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<th class="th-'+gc+'" style="font-size:10px;font-weight:800">소계</th>'; cols[g].forEach(function(sub){ html+='<th class="th-'+gc+'" style="font-size:10px;font-weight:600;opacity:.85">'+esc(sub)+'</th>'; }); });
-    html+='</tr></thead><tbody>';
-
-    var gTot=0, gGrp={}, gSub={}; GRPS.forEach(function(g){gGrp[g]=0;cols[g].forEach(function(sub){gSub[g+'||'+sub]=0;});});
-    mList.forEach(function(mon){
-      var weeks=Object.keys(months[mon]).map(Number).sort(function(a,b){return a-b;});
-      var mTot=0, mGrp={}, mSub={}; GRPS.forEach(function(g){mGrp[g]=0;cols[g].forEach(function(sub){mSub[g+'||'+sub]=0;});});
-      weeks.forEach(function(wn){
-        var w=months[mon][wn]; mTot+=w.total; gTot+=w.total;
-        html+='<tr class="rf-wk"><td style="text-align:left;font-weight:600;color:var(--sub);white-space:nowrap">'+MN[mon-1]+' '+wn+'주차</td><td style="font-weight:700;text-align:right">'+fmt(w.total)+'</td>';
-        GRPS.forEach(function(g){
-          var gc=GRP_CLASS[g]||'', sc=w.byGrp[g]||0; mGrp[g]+=sc; gGrp[g]+=sc;
-          html+='<td class="td-'+gc+'" style="font-weight:700;text-align:right">'+(sc?fmt(sc):'<span style="color:var(--muted)">—</span>')+'</td>';
-          cols[g].forEach(function(sub){ var gsk=g+'||'+sub, v=w.byGrpSub[gsk]||0; mSub[gsk]+=v; gSub[gsk]+=v; html+='<td class="td-'+gc+'-sub" style="text-align:right">'+(v?fmt(v):'<span style="color:var(--muted)">—</span>')+'</td>'; });
-        });
-        html+='</tr>';
+    var gAmt=0, gRef=0, gDone=0, gCnt=0;
+    if(REFUND_VIEW==='week'){
+      // 월-주차 묶음
+      var batches={};
+      recs.forEach(function(x){
+        var bk=String(x.month).padStart(2,'0')+'-'+String(x.week).padStart(2,'0');
+        if(!batches[bk]) batches[bk]={month:x.month,week:x.week,rows:{}};
+        var sk=x.grp+'|'+x.sun, rr=batches[bk].rows[sk]||(batches[bk].rows[sk]={grp:x.grp,sun:x.sun,amount:0,refund:0,done:0,cnt:0});
+        rr.amount+=x.amount; rr.refund+=x.refund; rr.cnt++; if(x.done) rr.done++;
       });
-      html+='<tr style="background:#fff7ed;border-top:1px solid #fdba74"><td style="text-align:left;font-weight:800;color:#9a3412;white-space:nowrap">'+MN[mon-1]+' 합계</td><td style="font-weight:800;text-align:right;color:#9a3412">'+fmt(mTot)+'</td>';
-      GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||''; html+='<td class="td-'+gc+'" style="font-weight:800;text-align:right">'+(mGrp[g]?fmt(mGrp[g]):'—')+'</td>'; cols[g].forEach(function(sub){var gsk=g+'||'+sub;html+='<td class="td-'+gc+'-sub" style="font-weight:700;text-align:right">'+(mSub[gsk]?fmt(mSub[gsk]):'—')+'</td>';}); });
-      html+='</tr>';
-    });
-    html+='<tr style="border-top:2px solid #94a3b8;background:#f8fafc"><td style="text-align:left;font-weight:800;color:#1e293b">전체 합계</td><td style="font-weight:800;text-align:right;color:#1e293b">'+fmt(gTot)+'</td>';
-    GRPS.forEach(function(g){ var gc=GRP_CLASS[g]||'', col=GRP_COLOR[g]||'#1e293b'; html+='<td class="td-'+gc+'" style="font-weight:800;text-align:right;color:'+col+'">'+(gGrp[g]?fmt(gGrp[g]):'—')+'</td>'; cols[g].forEach(function(sub){var gsk=g+'||'+sub;html+='<td class="td-'+gc+'-sub" style="font-weight:700;text-align:right;color:'+col+'">'+(gSub[gsk]?fmt(gSub[gsk]):'—')+'</td>';}); });
-    html+='</tr></tbody></table></div>';
-    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 시트 M열(환급금)을 순헌금 행 기준으로 다락방·순·주차별 집계합니다. 시트 수정 후 새로고침하면 반영됩니다.</div>';
+      Object.keys(batches).sort().forEach(function(bk){
+        var b=batches[bk];
+        html+='<tr class="rf-batch"><td colspan="4">📅 '+MN[b.month-1]+' '+b.week+'주차 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">(다음주 수요일 이체)</span></td></tr>';
+        var keys=Object.keys(b.rows).sort(function(a,b2){
+          var ga=REFUND_GRPS.indexOf(a.split('|')[0]), gb=REFUND_GRPS.indexOf(b2.split('|')[0]);
+          if(ga!==gb) return ga-gb;
+          return SUN.indexOf(a.split('|')[1])-SUN.indexOf(b2.split('|')[1]);
+        });
+        var bAmt=0,bRef=0,bDone=0,bCnt=0;
+        keys.forEach(function(k){
+          var rr=b.rows[k]; bAmt+=rr.amount;bRef+=rr.refund;bDone+=rr.done;bCnt+=rr.cnt;
+          gAmt+=rr.amount;gRef+=rr.refund;gDone+=rr.done;gCnt+=rr.cnt;
+          html+='<tr><td style="text-align:left;font-weight:600">'+esc(rfSunLabel(rr.grp,rr.sun))+'</td>'
+            +'<td style="text-align:right">'+fmt(rr.amount)+'</td>'
+            +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(rr.refund)+'</td>'
+            +'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
+        });
+        html+='<tr class="rf-sub"><td style="text-align:left;font-weight:800">└ 주차 합계</td>'
+          +'<td style="text-align:right;font-weight:800">'+fmt(bAmt)+'</td>'
+          +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(bRef)+'</td>'
+          +'<td style="text-align:center;font-size:11px;color:var(--sub)">'+bDone+'/'+bCnt+' 이체</td></tr>';
+      });
+    } else {
+      // 순별 누계 (14개 순 고정)
+      var agg={};
+      recs.forEach(function(x){
+        var sk=x.grp+'|'+x.sun, rr=agg[sk]||(agg[sk]={amount:0,refund:0,done:0,cnt:0});
+        rr.amount+=x.amount; rr.refund+=x.refund; rr.cnt++; if(x.done) rr.done++;
+      });
+      REFUND_GRPS.forEach(function(g){
+        (REFUND_SUBS[g]||[]).forEach(function(s){
+          var rr=agg[g+'|'+s]||{amount:0,refund:0,done:0,cnt:0};
+          gAmt+=rr.amount;gRef+=rr.refund;gDone+=rr.done;gCnt+=rr.cnt;
+          html+='<tr><td style="text-align:left;font-weight:600">'+esc(rfSunLabel(g,s))+'</td>'
+            +'<td style="text-align:right">'+(rr.amount?fmt(rr.amount):'<span style="color:var(--muted)">—</span>')+'</td>'
+            +'<td style="text-align:right;font-weight:800;color:#9a3412">'+(rr.refund?fmt(rr.refund):'<span style="color:var(--muted)">—</span>')+'</td>'
+            +'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
+        });
+      });
+    }
+    html+='</tbody><tfoot><tr style="border-top:2px solid #94a3b8;background:#f8fafc">'
+      +'<td style="text-align:left;font-weight:800">전체 합계</td>'
+      +'<td style="text-align:right;font-weight:800">'+fmt(gAmt)+'</td>'
+      +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(gRef)+'</td>'
+      +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr></tfoot></table>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 이체 완료는 N열(순헌금 환급 완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료로 봅니다. "적용제외" 행은 제외됩니다.</div>';
     c.innerHTML=html;
-    setRefundView(REFUND_VIEW);
   });
 }
 function setRefundView(mode){
-  REFUND_VIEW = (mode==='month')?'month':'all';
-  var ba=document.getElementById('rfBtnAll'), bm=document.getElementById('rfBtnMonth');
-  if(ba) ba.classList.toggle('on', REFUND_VIEW==='all');
-  if(bm) bm.classList.toggle('on', REFUND_VIEW==='month');
-  document.querySelectorAll('#refundTbl .rf-wk').forEach(function(tr){ tr.style.display = (REFUND_VIEW==='month'?'none':''); });
+  REFUND_VIEW = (mode==='sum')?'sum':'week';
+  renderOfferRefund();
 }
 function printRefund(){
-  var tbl=document.getElementById('refundTbl'); if(!tbl){alert('먼저 환급금 탭을 열어주세요.');return;}
-  var inner=tbl.innerHTML;
-  if(REFUND_VIEW==='month'){
-    var tmp=document.createElement('table'); tmp.innerHTML=inner;
-    tmp.querySelectorAll('.rf-wk').forEach(function(tr){tr.parentNode.removeChild(tr);});
-    inner=tmp.innerHTML;
-  }
-  var win=window.open('','_blank','width=1000,height=720');
-  win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>순헌금 월별 환급금</title>');
+  var tbl=document.getElementById('refundTbl'); if(!tbl){alert('먼저 환급 탭을 열어주세요.');return;}
+  var win=window.open('','_blank','width=920,height=720');
+  win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>순헌금 환급 현황</title>');
   win.document.write('<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">');
-  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:"Noto Sans KR",sans-serif}body{background:#fff;padding:16px}.print-title{text-align:center;font-size:18px;font-weight:800;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:5px 7px;border:1px solid #cbd5e1;text-align:center}th{background:#f8fafc;font-weight:700}@page{size:A4 landscape;margin:10mm}</style></head><body>');
-  win.document.write('<div class="print-title">'+CY+'년 순헌금 월별 환급금'+(REFUND_VIEW==='month'?' (월 합계)':'')+'</div>');
-  win.document.write('<table>'+inner+'</table>');
+  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:"Noto Sans KR",sans-serif}body{background:#fff;padding:16px}.print-title{text-align:center;font-size:18px;font-weight:800;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px 9px;border:1px solid #cbd5e1}th{background:#f8fafc;font-weight:700}@page{size:A4 portrait;margin:12mm}</style></head><body>');
+  win.document.write('<div class="print-title">'+CY+'년 순헌금 환급 현황 ('+(REFUND_VIEW==='sum'?'순별 누계':'주차별 상세')+')</div>');
+  win.document.write('<table>'+tbl.innerHTML+'</table>');
   win.document.write('</body></html>');
   win.document.close();
   setTimeout(function(){win.print();},500);
