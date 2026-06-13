@@ -256,6 +256,11 @@ tr:hover td{background:var(--bg)}
 .rf-ctrl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
 .rf-vbtn{font-size:12px;font-weight:700;padding:5px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--sub);cursor:pointer;font-family:var(--font);transition:all .15s}
 .rf-vbtn.on{background:#9a3412;border-color:#9a3412;color:#fff}
+.rf-split td{background:#fbfaf5;padding:8px 12px;border-bottom:1px solid var(--border)}
+.rfb{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:8px;margin:2px 6px 2px 0;white-space:nowrap}
+.rfb-r{background:#fde8d7;color:#9a3412}
+.rfb-c{background:#dbeafe;color:#1e40af}
+.rfb-h{background:#dcfce7;color:#166534}
 .ad-doc{padding:6px 4px 14px}
 .ad-sign{border-collapse:collapse;margin:0 0 12px auto;font-size:11px}
 .ad-sign td{border:1px solid var(--border2);text-align:center}
@@ -1707,6 +1712,16 @@ function rfDoneBadge(done, cnt){
   return '<span style="color:#b45309;font-weight:700;background:#fef3c7;padding:1px 7px;border-radius:8px">미완료</span>';
 }
 function rfSunLabel(g,s){ return (GRP_ICON2[g]||'')+' '+g+' '+s; }
+/* 주차/전체 합계 배분: 순환급40% · 교회입금20% · 보유40% (보유=원금−순환급−교회입금) */
+function rfSplitRow(amt, ref, big){
+  var church=Math.round(amt*0.2), retain=amt-ref-church;
+  var pad = big?';font-size:13px':'';
+  return '<tr class="rf-split"><td colspan="4" style="text-align:center'+pad+'">'
+    +'<span class="rfb rfb-r">💸 순환급 40% '+fmt(ref)+'</span>'
+    +'<span class="rfb rfb-c">⛪ 교회입금 20% '+fmt(church)+'</span>'
+    +'<span class="rfb rfb-h">🏦 보유 40% '+fmt(retain)+'</span>'
+    +'</td></tr>';
+}
 function renderOfferRefund(){
   loadRefund(function(){
     var yr=CY, recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0;});
@@ -1758,6 +1773,7 @@ function renderOfferRefund(){
           +'<td style="text-align:right;font-weight:800">'+fmt(bAmt)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(bRef)+'</td>'
           +'<td style="text-align:center;font-size:11px;color:var(--sub)">'+bDone+'/'+bCnt+' 이체</td></tr>';
+        html+=rfSplitRow(bAmt, bRef, false);
       });
     } else {
       // 순별 누계 (14개 순 고정)
@@ -1781,8 +1797,9 @@ function renderOfferRefund(){
       +'<td style="text-align:left;font-weight:800">전체 합계</td>'
       +'<td style="text-align:right;font-weight:800">'+fmt(gAmt)+'</td>'
       +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(gRef)+'</td>'
-      +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr></tfoot></table>';
-    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 이체 완료는 N열(순헌금 환급 완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료로 봅니다. "적용제외" 행은 제외됩니다.</div>';
+      +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr>'
+      +rfSplitRow(gAmt, gRef, true)+'</tfoot></table>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 입금액 배분 → <b>순환급 40%</b>(각 순 이체) · <b>교회입금 20%</b> · <b>보유 40%</b>. (보유 = 원금 − 순환급 − 교회입금)<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
     c.innerHTML=html;
   });
 }
