@@ -1736,15 +1736,24 @@ function renderOfferRefund(){
       return;
     }
     var html=head;
-    html+='<table class="offer-tbl" id="refundTbl"><thead><tr>'
+    html+='<div style="overflow-x:auto"><table class="offer-tbl" id="refundTbl"><thead><tr>'
       +'<th style="text-align:left">순</th>'
-      +'<th style="text-align:right">입금액 (원금)</th>'
-      +'<th style="text-align:right">환급 40%</th>'
+      +'<th style="text-align:right">입금액<br><span style="font-weight:600;opacity:.7;font-size:10px">원금 100%</span></th>'
+      +'<th style="text-align:right;color:#9a3412">순환급<br><span style="font-weight:600;font-size:10px">40%</span></th>'
+      +'<th style="text-align:right;color:#1e40af">교회입금<br><span style="font-weight:600;font-size:10px">20%</span></th>'
+      +'<th style="text-align:right;color:#166534">보유<br><span style="font-weight:600;font-size:10px">40%</span></th>'
       +'<th style="text-align:center">이체 완료</th></tr></thead><tbody>';
 
-    var gAmt=0, gRef=0, gDone=0, gCnt=0;
+    var gAmt=0, gRef=0, gChu=0, gRet=0, gDone=0, gCnt=0;
+    function moneyCells(amt, ref){
+      var chu=Math.round(amt*0.2), ret=amt-ref-chu;
+      return {chu:chu, ret:ret,
+        html:'<td style="text-align:right">'+(amt?fmt(amt):'<span style="color:var(--muted)">—</span>')+'</td>'
+          +'<td style="text-align:right;font-weight:800;color:#9a3412">'+(ref?fmt(ref):'<span style="color:var(--muted)">—</span>')+'</td>'
+          +'<td style="text-align:right;font-weight:700;color:#1e40af">'+(chu?fmt(chu):'<span style="color:var(--muted)">—</span>')+'</td>'
+          +'<td style="text-align:right;font-weight:700;color:#166534">'+(ret?fmt(ret):'<span style="color:var(--muted)">—</span>')+'</td>'};
+    }
     if(REFUND_VIEW==='week'){
-      // 월-주차 묶음
       var batches={};
       recs.forEach(function(x){
         var bk=String(x.month).padStart(2,'0')+'-'+String(x.week).padStart(2,'0');
@@ -1754,29 +1763,28 @@ function renderOfferRefund(){
       });
       Object.keys(batches).sort().forEach(function(bk){
         var b=batches[bk];
-        html+='<tr class="rf-batch"><td colspan="4">📅 '+MN[b.month-1]+' '+b.week+'주차 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">(다음주 수요일 이체)</span></td></tr>';
+        html+='<tr class="rf-batch"><td colspan="6">📅 '+MN[b.month-1]+' '+b.week+'주차 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">(다음주 수요일 이체)</span></td></tr>';
         var keys=Object.keys(b.rows).sort(function(a,b2){
           var ga=REFUND_GRPS.indexOf(a.split('|')[0]), gb=REFUND_GRPS.indexOf(b2.split('|')[0]);
           if(ga!==gb) return ga-gb;
           return SUN.indexOf(a.split('|')[1])-SUN.indexOf(b2.split('|')[1]);
         });
-        var bAmt=0,bRef=0,bDone=0,bCnt=0;
+        var bAmt=0,bRef=0,bChu=0,bRet=0,bDone=0,bCnt=0;
         keys.forEach(function(k){
-          var rr=b.rows[k]; bAmt+=rr.amount;bRef+=rr.refund;bDone+=rr.done;bCnt+=rr.cnt;
-          gAmt+=rr.amount;gRef+=rr.refund;gDone+=rr.done;gCnt+=rr.cnt;
+          var rr=b.rows[k], mc=moneyCells(rr.amount, rr.refund);
+          bAmt+=rr.amount;bRef+=rr.refund;bChu+=mc.chu;bRet+=mc.ret;bDone+=rr.done;bCnt+=rr.cnt;
           html+='<tr><td style="text-align:left;font-weight:600">'+esc(rfSunLabel(rr.grp,rr.sun))+'</td>'
-            +'<td style="text-align:right">'+fmt(rr.amount)+'</td>'
-            +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(rr.refund)+'</td>'
-            +'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
+            +mc.html+'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
         });
+        gAmt+=bAmt;gRef+=bRef;gChu+=bChu;gRet+=bRet;gDone+=bDone;gCnt+=bCnt;
         html+='<tr class="rf-sub"><td style="text-align:left;font-weight:800">└ 주차 합계</td>'
           +'<td style="text-align:right;font-weight:800">'+fmt(bAmt)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(bRef)+'</td>'
+          +'<td style="text-align:right;font-weight:800;color:#1e40af">'+fmt(bChu)+'</td>'
+          +'<td style="text-align:right;font-weight:800;color:#166534">'+fmt(bRet)+'</td>'
           +'<td style="text-align:center;font-size:11px;color:var(--sub)">'+bDone+'/'+bCnt+' 이체</td></tr>';
-        html+=rfSplitRow(bAmt, bRef, false);
       });
     } else {
-      // 순별 누계 (14개 순 고정)
       var agg={};
       recs.forEach(function(x){
         var sk=x.grp+'|'+x.sun, rr=agg[sk]||(agg[sk]={amount:0,refund:0,done:0,cnt:0});
@@ -1784,12 +1792,10 @@ function renderOfferRefund(){
       });
       REFUND_GRPS.forEach(function(g){
         (REFUND_SUBS[g]||[]).forEach(function(s){
-          var rr=agg[g+'|'+s]||{amount:0,refund:0,done:0,cnt:0};
-          gAmt+=rr.amount;gRef+=rr.refund;gDone+=rr.done;gCnt+=rr.cnt;
+          var rr=agg[g+'|'+s]||{amount:0,refund:0,done:0,cnt:0}, mc=moneyCells(rr.amount, rr.refund);
+          gAmt+=rr.amount;gRef+=rr.refund;gChu+=mc.chu;gRet+=mc.ret;gDone+=rr.done;gCnt+=rr.cnt;
           html+='<tr><td style="text-align:left;font-weight:600">'+esc(rfSunLabel(g,s))+'</td>'
-            +'<td style="text-align:right">'+(rr.amount?fmt(rr.amount):'<span style="color:var(--muted)">—</span>')+'</td>'
-            +'<td style="text-align:right;font-weight:800;color:#9a3412">'+(rr.refund?fmt(rr.refund):'<span style="color:var(--muted)">—</span>')+'</td>'
-            +'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
+            +mc.html+'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
         });
       });
     }
@@ -1797,9 +1803,10 @@ function renderOfferRefund(){
       +'<td style="text-align:left;font-weight:800">전체 합계</td>'
       +'<td style="text-align:right;font-weight:800">'+fmt(gAmt)+'</td>'
       +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(gRef)+'</td>'
-      +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr>'
-      +rfSplitRow(gAmt, gRef, true)+'</tfoot></table>';
-    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 입금액 배분 → <b>순환급 40%</b>(각 순 이체) · <b>교회입금 20%</b> · <b>보유 40%</b>. (보유 = 원금 − 순환급 − 교회입금)<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
+      +'<td style="text-align:right;font-weight:800;color:#1e40af">'+fmt(gChu)+'</td>'
+      +'<td style="text-align:right;font-weight:800;color:#166534">'+fmt(gRet)+'</td>'
+      +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr></tfoot></table></div>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 입금액 배분 → <b style="color:#9a3412">순환급 40%</b>(각 순 이체) · <b style="color:#1e40af">교회입금 20%</b> · <b style="color:#166534">보유 40%</b>. (보유 = 원금 − 순환급 − 교회입금)<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
     c.innerHTML=html;
   });
 }
