@@ -264,6 +264,12 @@ tr:hover td{background:var(--bg)}
 .rfb-c{background:#dbeafe;color:#1e40af}
 .rfb-h{background:#dcfce7;color:#166534}
 .rf-bank-btn{font-size:11px;font-weight:700;padding:3px 10px;margin-left:8px;border-radius:7px;border:none;background:#0e7490;color:#fff;cursor:pointer;font-family:var(--font)}
+.rf-tool{font-size:12px;font-weight:700;padding:5px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-family:var(--font);color:#fff}
+.rf-tool-print{background:#1e40af}
+.rf-tool-dl{background:#0e7490}
+.rf-tool-rf{background:#64748b}
+.rf-donesel{font-size:12px;font-weight:700;padding:5px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--sub);cursor:pointer;font-family:var(--font)}
+.rf-tool:hover{opacity:.88}
 .rf-bank-btn:hover{background:#155e75}
 .ad-doc{padding:6px 4px 14px}
 .ad-sign{border-collapse:collapse;margin:0 0 12px auto;font-size:11px}
@@ -1662,6 +1668,14 @@ function refundCsvUrl(){
 }
 var REFUND_RAW = null;
 var REFUND_VIEW = 'week';   // 'week'=주차별 상세, 'sum'=순별 누계
+var REFUND_DONE = 'all';    // 'all'=전체, 'pending'=미완료만, 'done'=완료만
+function rfPass(x){
+  if(REFUND_DONE==='pending') return !x.done;
+  if(REFUND_DONE==='done') return !!x.done;
+  return true;
+}
+function setRefundDone(v){ REFUND_DONE=(v==='pending'||v==='done')?v:'all'; renderOfferRefund(); }
+function refreshRefund(){ REFUND_RAW=null; renderOfferRefund(); }
 var REFUND_GRPS=['온유','충성','자비','양선'];
 var REFUND_SUBS={'온유':['1순','2순','3순'],'충성':['1순','2순','3순','4순','5순'],'자비':['1순','2순','3순'],'양선':['1순','2순','3순']};
 /* 순별/교회 이체 계좌 (하나은행 대량이체용) — [입금은행, 계좌번호, 예금주, 통장표시, 휴대폰] */
@@ -1685,14 +1699,28 @@ var REFUND_ACCOUNTS={
 var REFUND_CHURCH=['하나은행','57391002123705','온누리교회','교회입금 순헌금(20%)','010-2593-1397','김정은 간사'];
 function csvCell(v){ v=(v==null?'':String(v)); return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 /* 하나은행 대량이체 양식 CSV 생성 (그 주 입금된 순 40% + 교회 20%) */
+function genBankTransferLatest(){
+  if(!REFUND_RAW){ alert('먼저 환급 탭을 열어 데이터를 불러오세요.'); return; }
+  var recs=REFUND_RAW.filter(function(x){return x.year===CY && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date) && rfPass(x);});
+  if(!recs.length){ alert('이체할 순헌금 환급 대상이 없습니다.'); return; }
+  var uniq={}; recs.forEach(function(x){ uniq[rfWinKey(x.date)]=1; });
+  var keys=Object.keys(uniq).sort(), latest=keys[keys.length-1];
+  if(keys.length>1){
+    if(!confirm('이체 기간이 '+keys.length+'개 있습니다.\n가장 최근 기간만 만듭니다:\n\n'+(rfWindow(latest)||latest)+'\n\n진행할까요?')) return;
+  }
+  genBankTransfer(latest);
+}
 function genBankTransfer(winKey){
   if(!REFUND_RAW){ alert('먼저 환급 탭을 열어 데이터를 불러오세요.'); return; }
   var yr=CY;
-  var recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===winKey;});
+  var recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===winKey && rfPass(x);});
   if(!recs.length){ alert('해당 기간 입금 내역이 없습니다.'); return; }
-  var bySun={}, totalAmt=0;
-  recs.forEach(function(x){ var k=x.grp+'|'+x.sun; bySun[k]=(bySun[k]||0)+x.refund; totalAmt+=x.amount; });
-  var church=Math.round(totalAmt*0.2);
+  var bySun={};
+  recs.forEach(function(x){ var k=x.grp+'|'+x.sun; bySun[k]=(bySun[k]||0)+x.refund; });
+  // 교회입금 20%는 그 기간 '전체' 순헌금 기준 (완료 필터와 무관하게 고정)
+  var fullTotal=REFUND_RAW.reduce(function(a,x){ return (x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===winKey)?a+x.amount:a; },0);
+  var church=Math.round(fullTotal*0.2);
+  var incChurch=(REFUND_DONE==='all');   // 미완료/완료만 받을 땐 교회입금 중복 방지로 제외
   var HDR=['입금은행','입금계좌번호','입금액','예상예금주','입금통장표시','출금통장표시','메모','CMS코드','받는분 휴대폰번호'];
   var rows=[HDR], missing=[];
   Object.keys(bySun).sort(function(a,b){
@@ -1705,11 +1733,13 @@ function genBankTransfer(winKey){
     var phone=(a[4]||'').replace(/[^0-9]/g,'');
     rows.push([a[0], a[1], bySun[k], a[2], a[3], a[3], '', '', phone]);
   });
+  var sunCnt=rows.length-1;
   var c=REFUND_CHURCH, cph=(c[4]||'').replace(/[^0-9]/g,'');
-  rows.push([c[0], c[1], church, c[2], c[3], c[3], c[5]||'', '', cph]);
-  var fname='하나은행_대량이체_'+winKey+'_입금분';
-  var sunCnt=rows.length-2;
-  var doneMsg='✅ '+(rfWindow(winKey)||winKey)+' 입금분 대량이체 파일 생성\n· 순 '+sunCnt+'건 (순환급 40%)\n· 교회입금 1건 ('+fmt(church)+')'
+  if(incChurch) rows.push([c[0], c[1], church, c[2], c[3], c[3], c[5]||'', '', cph]);
+  var stTag=REFUND_DONE==='pending'?' (미완료만)':(REFUND_DONE==='done'?' (완료만)':'');
+  var fname='하나은행_대량이체_'+winKey+(stTag?'_미완료':'')+'_입금분';
+  var doneMsg='✅ '+(rfWindow(winKey)||winKey)+' 입금분 대량이체 파일 생성'+stTag+'\n· 순 '+sunCnt+'건 (순환급 40%)'
+    +(incChurch?'\n· 교회입금 1건 ('+fmt(church)+')':'\n· 교회입금 20% 제외 (미완료/완료만 모드)')
     +(missing.length?'\n\n⚠ 계좌정보 없는 순: '+missing.join(', '):'')
     +'\n\n하나은행 기업뱅킹 → 대량이체 → 파일등록에 업로드하세요.';
   if(typeof XLSX!=='undefined'){
@@ -1826,15 +1856,24 @@ function rfSplitRow(amt, ref, big){
 }
 function renderOfferRefund(){
   loadRefund(function(){
-    var yr=CY, recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0;});
+    var yr=CY, recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfPass(x);});
     var c=document.getElementById('offerRefundContent');
     var head='<div class="rf-ctrl">'
       +'<button id="rfBtnWeek" class="rf-vbtn'+(REFUND_VIEW==='week'?' on':'')+'" onclick="setRefundView(\'week\')">📅 주차별 상세</button>'
       +'<button id="rfBtnSum" class="rf-vbtn'+(REFUND_VIEW==='sum'?' on':'')+'" onclick="setRefundView(\'sum\')">🔢 순별 누계</button>'
-      +'<button class="wk-print-btn" onclick="printRefund()">🖨 인쇄</button></div>';
+      +'<select id="rfDoneSel" class="rf-donesel" onchange="setRefundDone(this.value)">'
+        +'<option value="all"'+(REFUND_DONE==='all'?' selected':'')+'>이체: 전체</option>'
+        +'<option value="pending"'+(REFUND_DONE==='pending'?' selected':'')+'>이체: 미완료만</option>'
+        +'<option value="done"'+(REFUND_DONE==='done'?' selected':'')+'>이체: 완료만</option>'
+      +'</select>'
+      +'<button class="rf-tool rf-tool-print" onclick="printRefund()">🖨 인쇄</button>'
+      +'<button class="rf-tool rf-tool-dl" onclick="genBankTransferLatest()">🏦 이체 엑셀 다운</button>'
+      +'<button class="rf-tool rf-tool-rf" onclick="refreshRefund()" title="시트 최신 데이터 다시 불러오기">🔄 새로고침</button></div>';
     if(!recs.length){
-      c.innerHTML=head+'<div class="empty"><div class="empty-i">📭</div><div>'+yr+'년 순헌금 환급 대상 없음</div>'
-        +'<div style="font-size:12px;color:var(--muted);margin-top:6px">2026-06-10부터 적용됩니다. 시트 M열(40% 환급액)이 채워진 순헌금 행만 집계합니다.</div></div>';
+      var emptyMsg = REFUND_DONE==='pending' ? '미완료 건이 없습니다 — 모두 이체 완료 🎉'
+                   : (REFUND_DONE==='done' ? '완료 표시된 건이 없습니다' : yr+'년 순헌금 환급 대상 없음');
+      c.innerHTML=head+'<div class="empty"><div class="empty-i">📭</div><div>'+emptyMsg+'</div>'
+        +'<div style="font-size:12px;color:var(--muted);margin-top:6px">2026-06-10부터 적용 · 시트 N열(완료 여부)에 표시가 있으면 완료로 봅니다.</div></div>';
       return;
     }
     var html=head;
@@ -1867,8 +1906,7 @@ function renderOfferRefund(){
       Object.keys(batches).sort().forEach(function(bk){
         var b=batches[bk];
         var win=rfWindow(b.minDate||bk);
-        html+='<tr class="rf-batch"><td colspan="6">📅 '+(win||bk)+' 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">→ 다음주 수요일 이체</span>'
-          +' <button class="rf-bank-btn" onclick="genBankTransfer(\''+bk+'\')">🏦 이체 엑셀</button></td></tr>';
+        html+='<tr class="rf-batch"><td colspan="6">📅 '+(win||bk)+' 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">→ 다음주 수요일 이체</span></td></tr>';
         var keys=Object.keys(b.rows).sort(function(a,b2){
           var ga=REFUND_GRPS.indexOf(a.split('|')[0]), gb=REFUND_GRPS.indexOf(b2.split('|')[0]);
           if(ga!==gb) return ga-gb;
