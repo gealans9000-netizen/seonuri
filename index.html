@@ -1684,11 +1684,11 @@ var REFUND_ACCOUNTS={
 var REFUND_CHURCH=['하나은행','57391002123705','온누리교회','교회입금 순헌금(20%)','010-2593-1397','김정은 간사'];
 function csvCell(v){ v=(v==null?'':String(v)); return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 /* 하나은행 대량이체 양식 CSV 생성 (그 주 입금된 순 40% + 교회 20%) */
-function genBankTransfer(mon, wk){
+function genBankTransfer(winKey){
   if(!REFUND_RAW){ alert('먼저 환급 탭을 열어 데이터를 불러오세요.'); return; }
   var yr=CY;
-  var recs=REFUND_RAW.filter(function(x){return x.year===yr && x.month===mon && x.week===wk && REFUND_GRPS.indexOf(x.grp)>=0;});
-  if(!recs.length){ alert('해당 주차 입금 내역이 없습니다.'); return; }
+  var recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===winKey;});
+  if(!recs.length){ alert('해당 기간 입금 내역이 없습니다.'); return; }
   var bySun={}, totalAmt=0;
   recs.forEach(function(x){ var k=x.grp+'|'+x.sun; bySun[k]=(bySun[k]||0)+x.refund; totalAmt+=x.amount; });
   var church=Math.round(totalAmt*0.2);
@@ -1709,10 +1709,10 @@ function genBankTransfer(mon, wk){
   var BOM='\uFEFF', csv=rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');
   var blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob), aEl=document.createElement('a');
-  aEl.href=url; aEl.download='하나은행_대량이체_'+yr+'년_'+mon+'월'+wk+'주차.csv';
+  aEl.href=url; aEl.download='하나은행_대량이체_'+winKey+'_입금분.csv';
   document.body.appendChild(aEl); aEl.click(); document.body.removeChild(aEl); URL.revokeObjectURL(url);
   var sunCnt=rows.length-2;
-  alert('✅ '+mon+'월 '+wk+'주차 대량이체 파일 생성\n· 순 '+sunCnt+'건 (순환급 40%)\n· 교회입금 1건 ('+fmt(church)+')'
+  alert('✅ '+(rfWindow(winKey)||winKey)+' 입금분 대량이체 파일 생성\n· 순 '+sunCnt+'건 (순환급 40%)\n· 교회입금 1건 ('+fmt(church)+')'
     +(missing.length?'\n\n⚠ 계좌정보 없는 순: '+missing.join(', '):'')
     +'\n\n하나은행 기업뱅킹 → 대량이체 → 파일등록에 업로드하세요.');
 }
@@ -1787,6 +1787,13 @@ function rfWindow(dateStr){
   function f(dt){ return (dt.getMonth()+1)+'월 '+dt.getDate()+'일('+DOW[dt.getDay()]+')'; }
   return f(start)+' ~ '+f(end);
 }
+/* 이체 기간(수~화)의 시작 수요일 키 'YYYY-MM-DD' */
+function rfWinKey(dateStr){
+  if(!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return '';
+  var p=dateStr.slice(0,10).split('-'), d=new Date(+p[0],+p[1]-1,+p[2]);
+  var off=(d.getDay()-3+7)%7; d.setDate(d.getDate()-off);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 /* 주차/전체 합계 배분: 순환급40% · 교회입금20% · 보유40% (보유=원금−순환급−교회입금) */
 function rfSplitRow(amt, ref, big){
   var church=Math.round(amt*0.2), retain=amt-ref-church;
@@ -1831,17 +1838,17 @@ function renderOfferRefund(){
     if(REFUND_VIEW==='week'){
       var batches={};
       recs.forEach(function(x){
-        var bk=String(x.month).padStart(2,'0')+'-'+String(x.week).padStart(2,'0');
-        if(!batches[bk]) batches[bk]={month:x.month,week:x.week,rows:{},minDate:x.date};
+        var bk=rfWinKey(x.date) || ('NA-'+x.month+'-'+x.week);   // 이체 기간(수~화) 기준
+        if(!batches[bk]) batches[bk]={key:bk, rows:{}, minDate:x.date||''};
         if(x.date && (!batches[bk].minDate || x.date < batches[bk].minDate)) batches[bk].minDate=x.date;
         var sk=x.grp+'|'+x.sun, rr=batches[bk].rows[sk]||(batches[bk].rows[sk]={grp:x.grp,sun:x.sun,amount:0,refund:0,done:0,cnt:0});
         rr.amount+=x.amount; rr.refund+=x.refund; rr.cnt++; if(x.done) rr.done++;
       });
       Object.keys(batches).sort().forEach(function(bk){
         var b=batches[bk];
-        var win=rfWindow(b.minDate);
-        html+='<tr class="rf-batch"><td colspan="6">📅 '+MN[b.month-1]+' '+b.week+'주차 입금분'+(win?' <span style="font-weight:600;color:#9a3412;font-size:11px">('+win+')</span>':'')+' &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">→ 다음주 수요일 이체</span>'
-          +' <button class="rf-bank-btn" onclick="genBankTransfer('+b.month+','+b.week+')">🏦 이체 엑셀</button></td></tr>';
+        var win=rfWindow(b.minDate||bk);
+        html+='<tr class="rf-batch"><td colspan="6">📅 '+(win||bk)+' 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">→ 다음주 수요일 이체</span>'
+          +' <button class="rf-bank-btn" onclick="genBankTransfer(\''+bk+'\')">🏦 이체 엑셀</button></td></tr>';
         var keys=Object.keys(b.rows).sort(function(a,b2){
           var ga=REFUND_GRPS.indexOf(a.split('|')[0]), gb=REFUND_GRPS.indexOf(b2.split('|')[0]);
           if(ga!==gb) return ga-gb;
@@ -1855,7 +1862,7 @@ function renderOfferRefund(){
             +mc.html+'<td style="text-align:center">'+rfDoneBadge(rr.done,rr.cnt)+'</td></tr>';
         });
         gAmt+=bAmt;gRef+=bRef;gChu+=bChu;gRet+=bRet;gDone+=bDone;gCnt+=bCnt;
-        html+='<tr class="rf-sub"><td style="text-align:left;font-weight:800">└ 주차 합계</td>'
+        html+='<tr class="rf-sub"><td style="text-align:left;font-weight:800">└ 기간 합계</td>'
           +'<td style="text-align:right;font-weight:800">'+fmt(bAmt)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(bRef)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#1e40af">'+fmt(bChu)+'</td>'
@@ -1984,17 +1991,17 @@ function buildRefundShare(d, yr){
   if(!recs.length) return '\n🙏 주차별 순헌금 환급 현황: 대상 없음 (2026-06-10부터 적용)\n';
   var batches={};
   recs.forEach(function(x){
-    var bk=String(x.month).padStart(2,'0')+'-'+String(x.week).padStart(2,'0');
-    if(!batches[bk]) batches[bk]={month:x.month,week:x.week,minDate:x.date,rows:{}};
+    var bk=rfWinKey(x.date) || ('NA-'+x.month+'-'+x.week);
+    if(!batches[bk]) batches[bk]={key:bk,minDate:x.date||'',rows:{}};
     if(x.date&&(!batches[bk].minDate||x.date<batches[bk].minDate)) batches[bk].minDate=x.date;
     var sk=x.grp+'|'+x.sun, rr=batches[bk].rows[sk]||(batches[bk].rows[sk]={grp:x.grp,sun:x.sun,amount:0,refund:0});
     rr.amount+=x.amount; rr.refund+=x.refund;
   });
-  var t='\n🙏 주차별 순헌금 환급 현황\n(입금 → 순환급40%/교회20%/보유40%)\n━━━━━━━━━━━━\n';
+  var t='\n🙏 순헌금 환급 현황 (기간별)\n(입금 → 순환급40%/교회20%/보유40%)\n━━━━━━━━━━━━\n';
   var gA=0,gR=0,gC=0,gH=0;
   Object.keys(batches).sort().forEach(function(bk){
-    var b=batches[bk], win=rfWindow(b.minDate);
-    t+='📅 '+MN[b.month-1]+' '+b.week+'주차'+(win?' ('+win+')':'')+'\n';
+    var b=batches[bk], win=rfWindow(b.minDate||bk);
+    t+='📅 '+(win||bk)+'\n';
     var keys=Object.keys(b.rows).sort(function(a,b2){
       var ga=REFUND_GRPS.indexOf(a.split('|')[0]), gb=REFUND_GRPS.indexOf(b2.split('|')[0]);
       if(ga!==gb) return ga-gb;
@@ -2007,7 +2014,7 @@ function buildRefundShare(d, yr){
       t+='· '+rr.grp+' '+rr.sun+' 입금 '+kNum(rr.amount)+' → 환급 '+kNum(rr.refund)+' / 교회 '+kNum(chu)+' / 보유 '+kNum(ret)+'\n';
     });
     gA+=bA;gR+=bR;gC+=bC;gH+=bH;
-    t+='└ 주차합계 입금 '+kNum(bA)+' → 환급 '+kNum(bR)+' / 교회 '+kNum(bC)+' / 보유 '+kNum(bH)+'\n';
+    t+='└ 기간합계 입금 '+kNum(bA)+' → 환급 '+kNum(bR)+' / 교회 '+kNum(bC)+' / 보유 '+kNum(bH)+'\n';
   });
   t+='━━━━━━━━━━━━\n총 입금 '+kNum(gA)+'\n→ 순환급40% '+kNum(gR)+' / 교회입금20% '+kNum(gC)+' / 보유40% '+kNum(gH)+'\n';
   return t;
