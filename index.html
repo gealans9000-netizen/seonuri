@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
@@ -1706,15 +1707,34 @@ function genBankTransfer(winKey){
   });
   var c=REFUND_CHURCH, cph=(c[4]||'').replace(/[^0-9]/g,'');
   rows.push([c[0], c[1], church, c[2], c[3], c[3], c[5]||'', '', cph]);
-  var BOM='\uFEFF', csv=rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');
-  var blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8;'});
-  var url=URL.createObjectURL(blob), aEl=document.createElement('a');
-  aEl.href=url; aEl.download='하나은행_대량이체_'+winKey+'_입금분.csv';
-  document.body.appendChild(aEl); aEl.click(); document.body.removeChild(aEl); URL.revokeObjectURL(url);
+  var fname='하나은행_대량이체_'+winKey+'_입금분';
   var sunCnt=rows.length-2;
-  alert('✅ '+(rfWindow(winKey)||winKey)+' 입금분 대량이체 파일 생성\n· 순 '+sunCnt+'건 (순환급 40%)\n· 교회입금 1건 ('+fmt(church)+')'
+  var doneMsg='✅ '+(rfWindow(winKey)||winKey)+' 입금분 대량이체 파일 생성\n· 순 '+sunCnt+'건 (순환급 40%)\n· 교회입금 1건 ('+fmt(church)+')'
     +(missing.length?'\n\n⚠ 계좌정보 없는 순: '+missing.join(', '):'')
-    +'\n\n하나은행 기업뱅킹 → 대량이체 → 파일등록에 업로드하세요.');
+    +'\n\n하나은행 기업뱅킹 → 대량이체 → 파일등록에 업로드하세요.';
+  if(typeof XLSX!=='undefined'){
+    // 계좌번호·휴대폰은 텍스트로 고정 → 앞 0 유지, 지수표기 방지
+    var ws=XLSX.utils.aoa_to_sheet(rows);
+    var rng=XLSX.utils.decode_range(ws['!ref']);
+    for(var R=1; R<=rng.e.r; R++){
+      ['B','I'].forEach(function(col){
+        var ad=col+(R+1), cell=ws[ad];
+        if(cell){ cell.t='s'; cell.z='@'; cell.v=String(cell.v); }
+      });
+    }
+    ws['!cols']=[{wch:10},{wch:18},{wch:10},{wch:10},{wch:20},{wch:20},{wch:12},{wch:8},{wch:14}];
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    XLSX.writeFile(wb, fname+'.xlsx');
+    alert(doneMsg);
+  } else {
+    // 폴백: CSV
+    var BOM='\uFEFF', csv=rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');
+    var blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob), aEl=document.createElement('a');
+    aEl.href=url; aEl.download=fname+'.csv';
+    document.body.appendChild(aEl); aEl.click(); document.body.removeChild(aEl); URL.revokeObjectURL(url);
+    alert(doneMsg);
+  }
 }
 function parseCSV(text){
   var rows=[], row=[], cur='', q=false;
