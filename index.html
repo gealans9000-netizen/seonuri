@@ -273,6 +273,9 @@ tr:hover td{background:var(--bg)}
 .acct-tbl th{background:var(--bg);color:var(--muted);font-size:11px;font-weight:700;text-align:left;padding:9px 11px;border-bottom:1.5px solid var(--border);white-space:nowrap}
 .acct-tbl td{padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap}
 .acct-tbl tr:last-child td{border-bottom:none}
+.acct-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.acct-inp{width:100%;min-width:90px;font-size:13px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:#fff;color:var(--text);font-family:var(--font)}
+.acct-inp:focus{outline:none;border-color:#7c3aed;box-shadow:0 0 0 2px rgba(124,58,237,.15)}
 .rf-donesel{font-size:12px;font-weight:700;padding:5px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--sub);cursor:pointer;font-family:var(--font)}
 .rf-tool:hover{opacity:.88}
 .rf-bank-btn:hover{background:#155e75}
@@ -1694,32 +1697,116 @@ function setRefundDone(v){ REFUND_DONE=(v==='pending'||v==='done')?v:'all'; rend
 var REFUND_DEP = 'all';     // 'all'=모두, 'paid'=입금만, 'unpaid'=미입금만
 function setRefundDep(v){ REFUND_DEP=(v==='paid'||v==='unpaid')?v:'all'; renderOfferRefund(); }
 function refreshRefund(){ REFUND_RAW=null; renderOfferRefund(); }
-/* 14개 순 + 교회 이체 계좌·연락처 보기 */
+/* 14개 순 + 교회 이체 계좌·연락처 (편집 가능) */
+function acctInput(k, f, val){
+  return '<input class="acct-inp" data-k="'+esc(k)+'" data-f="'+f+'" value="'+esc(val||'')+'">';
+}
 function showAccounts(){
   var rows='';
   REFUND_GRPS.forEach(function(g){
     (REFUND_SUBS[g]||[]).forEach(function(s){
-      var a=REFUND_ACCOUNTS[g+'|'+s]; if(!a) return;
-      var ph=(a[4]||''), phd=ph.replace(/[^0-9]/g,'');
-      rows+='<tr><td style="font-weight:700">'+esc((GRP_ICON2[g]||'')+' '+g+' '+s)+'</td>'
-        +'<td>'+esc(a[0])+'</td>'
-        +'<td style="font-variant-numeric:tabular-nums">'+esc(a[1])+'</td>'
-        +'<td>'+esc(a[2])+'</td>'
-        +'<td>'+(ph?'<a href="tel:'+phd+'" style="color:#0e7490;font-weight:700">'+esc(ph)+'</a>':'-')+'</td></tr>';
+      var k=g+'|'+s, a=REFUND_ACCOUNTS[k]; if(!a) return;
+      rows+='<tr><td style="font-weight:700;white-space:nowrap">'+esc((GRP_ICON2[g]||'')+' '+g+' '+s)+'</td>'
+        +'<td>'+acctInput(k,'bank',a[0])+'</td>'
+        +'<td>'+acctInput(k,'acct',a[1])+'</td>'
+        +'<td>'+acctInput(k,'payee',a[2])+'</td>'
+        +'<td>'+acctInput(k,'phone',a[4])+'</td></tr>';
     });
   });
-  var c=REFUND_CHURCH, cph=(c[4]||''), cphd=cph.replace(/[^0-9]/g,'');
-  rows+='<tr style="background:#fffbeb"><td style="font-weight:800;color:#9a3412">⛪ 교회입금(20%)</td>'
-    +'<td>'+esc(c[0])+'</td><td style="font-variant-numeric:tabular-nums">'+esc(c[1])+'</td>'
-    +'<td>'+esc(c[2])+(c[5]?' <span style="color:var(--muted);font-size:11px">('+esc(c[5])+')</span>':'')+'</td>'
-    +'<td>'+(cph?'<a href="tel:'+cphd+'" style="color:#0e7490;font-weight:700">'+esc(cph)+'</a>':'-')+'</td></tr>';
+  var c=REFUND_CHURCH;
+  rows+='<tr style="background:#fffbeb"><td style="font-weight:800;color:#9a3412;white-space:nowrap">⛪ 교회입금</td>'
+    +'<td>'+acctInput('CHURCH','bank',c[0])+'</td>'
+    +'<td>'+acctInput('CHURCH','acct',c[1])+'</td>'
+    +'<td>'+acctInput('CHURCH','payee',c[2])+'</td>'
+    +'<td>'+acctInput('CHURCH','phone',c[4])+'</td></tr>';
   document.getElementById('acctBody').innerHTML=
-    '<div class="tbl-sc"><table class="acct-tbl"><thead><tr><th>순</th><th>은행</th><th>계좌번호</th><th>예금주</th><th>연락처</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">※ 연락처를 누르면 전화 연결됩니다(휴대폰). 이 계좌 정보가 대량이체 엑셀에 사용됩니다.<br>※ 계좌·연락처 변경은 코드의 계좌 정보를 수정해야 반영됩니다.</div>';
+    '<div class="acct-tools">'
+      +'<button class="rf-tool rf-tool-dl" onclick="saveAccounts()">💾 저장</button>'
+      +'<button class="rf-tool" style="background:#0e7490" onclick="downloadAccountsExcel()">📥 엑셀 다운로드</button>'
+      +'<button class="rf-tool" style="background:#7c3aed" onclick="document.getElementById(\'acctImp\').click()">📤 엑셀 불러오기</button>'
+      +'<button class="rf-tool" style="background:#64748b" onclick="resetAccounts()">↩ 기본값 복원</button>'
+      +'<input type="file" id="acctImp" accept=".xlsx,.xls,.csv" style="display:none" onchange="importAccountsExcel(this.files[0]);this.value=\'\'">'
+    +'</div>'
+    +'<div class="tbl-sc"><table class="acct-tbl"><thead><tr><th>순</th><th>은행</th><th>계좌번호</th><th>예금주</th><th>연락처</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">※ 값을 고친 뒤 <b>💾 저장</b>을 누르면 이 기기 브라우저에 저장되어 다음에도 유지됩니다. (대량이체 엑셀에도 즉시 반영)<br>※ 다른 기기와 공유하려면 <b>📥 엑셀 다운로드</b>로 받아 두고, 그 기기에서 <b>📤 엑셀 불러오기</b>로 적용하세요.</div>';
   document.getElementById('acctModal').classList.add('on');
   document.body.style.overflow='hidden';
 }
 function closeAcct(){ document.getElementById('acctModal').classList.remove('on'); document.body.style.overflow=''; }
+function collectAccts(){
+  var o={};
+  document.querySelectorAll('#acctBody input[data-k]').forEach(function(inp){
+    var k=inp.getAttribute('data-k'), f=inp.getAttribute('data-f');
+    (o[k]=o[k]||{})[f]=inp.value.trim();
+  });
+  return o;
+}
+function applyAccts(o){
+  Object.keys(o).forEach(function(k){
+    var v=o[k]||{};
+    if(k==='CHURCH'){ REFUND_CHURCH=[v.bank||'', v.acct||'', v.payee||'', REFUND_CHURCH[3], v.phone||'', REFUND_CHURCH[5]]; }
+    else if(REFUND_ACCOUNTS[k]){ var d=REFUND_ACCOUNTS[k]; REFUND_ACCOUNTS[k]=[v.bank||'', v.acct||'', v.payee||'', d[3], v.phone||'']; }
+  });
+}
+function saveAccounts(){
+  var o=collectAccts();
+  applyAccts(o);
+  try{ localStorage.setItem(ACCT_STORE_KEY, JSON.stringify(o)); alert('✅ 계좌·연락처가 저장되었습니다. (이 기기에 보관)'); }
+  catch(e){ alert('⚠ 저장 실패: 브라우저 저장소를 사용할 수 없습니다.\n엑셀 다운로드로 백업해 주세요.'); }
+}
+function resetAccounts(){
+  if(!confirm('계좌·연락처를 처음 기본값으로 되돌릴까요? 저장한 수정 내용이 사라집니다.')) return;
+  REFUND_ACCOUNTS=JSON.parse(JSON.stringify(REFUND_ACCOUNTS_DEFAULT));
+  REFUND_CHURCH=REFUND_CHURCH_DEFAULT.slice();
+  try{ localStorage.removeItem(ACCT_STORE_KEY); }catch(e){}
+  showAccounts();
+}
+function downloadAccountsExcel(){
+  applyAccts(collectAccts());   // 현재 화면값 반영
+  var HDR=['순','은행','계좌번호','예금주','연락처'], rows=[HDR];
+  REFUND_GRPS.forEach(function(g){ (REFUND_SUBS[g]||[]).forEach(function(s){
+    var a=REFUND_ACCOUNTS[g+'|'+s]; if(a) rows.push([g+' '+s, a[0], a[1], a[2], a[4]]);
+  });});
+  var c=REFUND_CHURCH; rows.push(['교회입금', c[0], c[1], c[2], c[4]]);
+  if(typeof XLSX!=='undefined'){
+    var ws=XLSX.utils.aoa_to_sheet(rows), rng=XLSX.utils.decode_range(ws['!ref']);
+    for(var R=1;R<=rng.e.r;R++){ ['C','E'].forEach(function(col){ var cell=ws[col+(R+1)]; if(cell){cell.t='s';cell.z='@';cell.v=String(cell.v);} }); }
+    ws['!cols']=[{wch:12},{wch:12},{wch:18},{wch:10},{wch:16}];
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '계좌연락처');
+    XLSX.writeFile(wb, '서누리_순별_계좌연락처.xlsx');
+  } else {
+    var BOM='\uFEFF', csv=rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');
+    var blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8;'}), url=URL.createObjectURL(blob), aEl=document.createElement('a');
+    aEl.href=url; aEl.download='서누리_순별_계좌연락처.csv'; document.body.appendChild(aEl); aEl.click(); document.body.removeChild(aEl); URL.revokeObjectURL(url);
+  }
+}
+function importAccountsExcel(file){
+  if(!file || typeof XLSX==='undefined'){ alert('엑셀 라이브러리를 불러올 수 없습니다.'); return; }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(e.target.result,{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      var nameToKey={}; REFUND_GRPS.forEach(function(g){ (REFUND_SUBS[g]||[]).forEach(function(s){ nameToKey[(g+s).replace(/\s/g,'')]=g+'|'+s; }); });
+      var o={}, n=0;
+      aoa.forEach(function(r){
+        if(!r||!r.length) return;
+        var name=String(r[0]||'').replace(/\s/g,''); if(!name||name==='순') return;
+        var key = name.indexOf('교회')>=0 ? 'CHURCH' : nameToKey[name];
+        if(!key) return;
+        o[key]={bank:String(r[1]||'').trim(), acct:String(r[2]||'').trim(), payee:String(r[3]||'').trim(), phone:String(r[4]||'').trim()};
+        n++;
+      });
+      if(!n){ alert('인식된 행이 없습니다. (1열: 순 이름, 2~5열: 은행/계좌/예금주/연락처)'); return; }
+      applyAccts(o);
+      try{ localStorage.setItem(ACCT_STORE_KEY, JSON.stringify(o)); }catch(e2){}
+      showAccounts();
+      alert('✅ 엑셀에서 '+n+'건을 불러와 적용·저장했습니다.');
+    }catch(err){ alert('엑셀을 읽지 못했습니다: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
 var REFUND_GRPS=['온유','충성','자비','양선'];
 var REFUND_SUBS={'온유':['1순','2순','3순'],'충성':['1순','2순','3순','4순','5순'],'자비':['1순','2순','3순'],'양선':['1순','2순','3순']};
 /* 순별/교회 이체 계좌 (하나은행 대량이체용) — [입금은행, 계좌번호, 예금주, 통장표시, 휴대폰] */
@@ -1741,6 +1828,26 @@ var REFUND_ACCOUNTS={
 };
 /* 교회입금(20%) 계좌 — [은행, 계좌, 예금주, 통장표시, 휴대폰, 메모] */
 var REFUND_CHURCH=['하나은행','57391002123705','온누리교회','교회입금 순헌금(20%)','010-2593-1397','김정은 간사'];
+/* 기본값 보관(복원용) + 사용자 저장값 로드 */
+var REFUND_ACCOUNTS_DEFAULT=JSON.parse(JSON.stringify(REFUND_ACCOUNTS));
+var REFUND_CHURCH_DEFAULT=REFUND_CHURCH.slice();
+var ACCT_STORE_KEY='seonuri_accounts_v1';
+function loadStoredAccounts(){
+  try{
+    var raw=localStorage.getItem(ACCT_STORE_KEY); if(!raw) return;
+    var o=JSON.parse(raw);
+    Object.keys(o).forEach(function(k){
+      var v=o[k]||{};
+      if(k==='CHURCH'){
+        REFUND_CHURCH=[v.bank||REFUND_CHURCH[0], v.acct||REFUND_CHURCH[1], v.payee||REFUND_CHURCH[2], REFUND_CHURCH[3], v.phone||REFUND_CHURCH[4], v.memo||REFUND_CHURCH[5]];
+      } else if(REFUND_ACCOUNTS[k]){
+        var d=REFUND_ACCOUNTS[k];
+        REFUND_ACCOUNTS[k]=[v.bank||d[0], v.acct||d[1], v.payee||d[2], d[3], v.phone||d[4]];
+      }
+    });
+  }catch(e){}
+}
+loadStoredAccounts();
 function csvCell(v){ v=(v==null?'':String(v)); return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 /* 하나은행 대량이체 양식 CSV 생성 (그 주 입금된 순 40% + 교회 20%) */
 function genBankTransferLatest(){
