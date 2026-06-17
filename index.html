@@ -269,6 +269,12 @@ tr:hover td{background:var(--bg)}
 .rf-tool-dl{background:#0e7490}
 .rf-tool-rf{background:#64748b}
 .rf-tool-acct{background:#7c3aed}
+.rf-arrow{display:inline-block;width:14px;color:var(--sub);font-size:11px}
+.rf-batch{user-select:none}
+.rf-cb{vertical-align:middle;width:15px;height:15px;cursor:pointer;accent-color:#0e7490;margin-right:2px}
+.rf-batch:hover td{filter:brightness(.97)}
+.rf-mini{font-size:11px;font-weight:700;padding:3px 10px;border-radius:7px;border:1px solid var(--border2);background:#fff;color:var(--sub);cursor:pointer;font-family:var(--font)}
+.rf-allctrl td{padding:6px 2px!important;background:transparent!important;border:none!important}
 .acct-tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:440px}
 .acct-tbl th{background:var(--bg);color:var(--muted);font-size:11px;font-weight:700;text-align:left;padding:9px 11px;border-bottom:1.5px solid var(--border);white-space:nowrap}
 .acct-tbl td{padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -1687,6 +1693,7 @@ function refundCsvUrl(){
 }
 var REFUND_RAW = null;
 var REFUND_VIEW = 'week';   // 'week'=주차별 상세, 'sum'=순별 누계
+var REFUND_COLLAPSED = {};  // 기간별 접힘 상태 (winKey -> true)
 var REFUND_DONE = 'all';    // 'all'=전체, 'pending'=미완료만, 'done'=완료만
 function rfPass(x){
   if(REFUND_DONE==='pending') return !x.done;
@@ -1855,23 +1862,33 @@ function genBankTransferLatest(){
   var recs=REFUND_RAW.filter(function(x){return x.year===CY && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date) && rfPass(x);});
   if(!recs.length){ alert('이체할 순헌금 환급 대상이 없습니다.'); return; }
   var uniq={}; recs.forEach(function(x){ uniq[rfWinKey(x.date)]=1; });
-  var keys=Object.keys(uniq).sort(), latest=keys[keys.length-1];
-  if(keys.length>1){
-    if(!confirm('이체 기간이 '+keys.length+'개 있습니다.\n가장 최근 기간만 만듭니다:\n\n'+(rfWindow(latest)||latest)+'\n\n진행할까요?')) return;
-  }
-  genBankTransfer(latest);
+  var keys=Object.keys(uniq).sort();
+  genBankTransferKeys([keys[keys.length-1]]);
 }
-function genBankTransfer(winKey){
+/* 체크된 기간들로 이체 엑셀 생성 (없으면 최신 기간) */
+function genBankTransferSelected(){
+  var keys=[];
+  document.querySelectorAll('#refundTbl input.rf-cb:checked').forEach(function(b){ keys.push(b.getAttribute('data-cb')); });
+  if(!keys.length){ genBankTransferLatest(); return; }
+  genBankTransferKeys(keys);
+}
+/* 선택 기간(1개 이상)을 한 파일로 합쳐 하나은행 대량이체 생성 */
+function genBankTransferKeys(keys){
   if(!REFUND_RAW){ alert('먼저 환급 탭을 열어 데이터를 불러오세요.'); return; }
-  var yr=CY;
-  var recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===winKey && rfPass(x);});
-  if(!recs.length){ alert('해당 기간 입금 내역이 없습니다.'); return; }
+  if(!keys || !keys.length){ alert('이체할 기간을 선택하세요.'); return; }
+  var yr=CY, keySet={}; keys.forEach(function(k){ keySet[k]=1; });
+  var skeys=keys.slice().sort();
+  var recs=REFUND_RAW.filter(function(x){return x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && keySet[rfWinKey(x.date)] && rfPass(x);});
+  if(!recs.length){ alert('선택한 기간에 이체할(조건에 맞는) 내역이 없습니다.'); return; }
   var bySun={};
   recs.forEach(function(x){ var k=x.grp+'|'+x.sun; bySun[k]=(bySun[k]||0)+x.refund; });
-  // 교회입금 20%는 그 기간 '전체' 순헌금 기준 (완료 필터와 무관하게 고정)
-  var fullTotal=REFUND_RAW.reduce(function(a,x){ return (x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===winKey)?a+x.amount:a; },0);
-  var church=Math.round(fullTotal*0.2);
-  var incChurch=(REFUND_DONE==='all');   // 미완료/완료만 받을 땐 교회입금 중복 방지로 제외
+  // 교회입금 20%: 선택한 각 기간 '전체' 합계의 20%를 합산 (완료필터와 무관)
+  var church=0;
+  skeys.forEach(function(wk){
+    var ft=REFUND_RAW.reduce(function(a,x){ return (x.year===yr && REFUND_GRPS.indexOf(x.grp)>=0 && rfWinKey(x.date)===wk)?a+x.amount:a; },0);
+    church+=Math.round(ft*0.2);
+  });
+  var incChurch=(REFUND_DONE==='all');
   var HDR=['입금은행','입금계좌번호','입금액','예상예금주','입금통장표시','출금통장표시','메모','CMS코드','받는분 휴대폰번호'];
   var rows=[HDR], missing=[];
   Object.keys(bySun).sort(function(a,b){
@@ -1888,27 +1905,23 @@ function genBankTransfer(winKey){
   var c=REFUND_CHURCH, cph=(c[4]||'').replace(/[^0-9]/g,'');
   if(incChurch) rows.push([c[0], c[1], church, c[2], c[3], c[3], c[5]||'', '', cph]);
   var stTag=REFUND_DONE==='pending'?' (미완료만)':(REFUND_DONE==='done'?' (완료만)':'');
-  var fname='하나은행_대량이체_'+winKey+(stTag?'_미완료':'')+'_입금분';
-  var doneMsg='✅ '+(rfWindow(winKey)||winKey)+' 입금분 대량이체 파일 생성'+stTag+'\n· 순 '+sunCnt+'건 (순환급 40%)'
+  var label = skeys.length>1 ? ((rfWindow(skeys[0])||skeys[0])+' 외 '+(skeys.length-1)+'개 기간') : (rfWindow(skeys[0])||skeys[0]);
+  var fname='하나은행_대량이체_'+skeys[0]+(skeys.length>1?'_외'+(skeys.length-1)+'기간':'')+(stTag?'_미완료':'')+'_입금분';
+  var doneMsg='✅ '+label+' 대량이체 파일 생성'+stTag+'\n· 기간 '+skeys.length+'개\n· 순 '+sunCnt+'건 (순환급 40%)'
     +(incChurch?'\n· 교회입금 1건 ('+fmt(church)+')':'\n· 교회입금 20% 제외 (미완료/완료만 모드)')
     +(missing.length?'\n\n⚠ 계좌정보 없는 순: '+missing.join(', '):'')
     +'\n\n하나은행 기업뱅킹 → 대량이체 → 파일등록에 업로드하세요.';
   if(typeof XLSX!=='undefined'){
-    // 계좌번호·휴대폰은 텍스트로 고정 → 앞 0 유지, 지수표기 방지
     var ws=XLSX.utils.aoa_to_sheet(rows);
     var rng=XLSX.utils.decode_range(ws['!ref']);
     for(var R=1; R<=rng.e.r; R++){
-      ['B','I'].forEach(function(col){
-        var ad=col+(R+1), cell=ws[ad];
-        if(cell){ cell.t='s'; cell.z='@'; cell.v=String(cell.v); }
-      });
+      ['B','I'].forEach(function(col){ var ad=col+(R+1), cell=ws[ad]; if(cell){ cell.t='s'; cell.z='@'; cell.v=String(cell.v); } });
     }
     ws['!cols']=[{wch:10},{wch:18},{wch:10},{wch:10},{wch:20},{wch:20},{wch:12},{wch:8},{wch:14}];
     var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
     XLSX.writeFile(wb, fname+'.xlsx');
     alert(doneMsg);
   } else {
-    // 폴백: CSV
     var BOM='\uFEFF', csv=rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');
     var blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8;'});
     var url=URL.createObjectURL(blob), aEl=document.createElement('a');
@@ -2023,7 +2036,7 @@ function renderOfferRefund(){
         +'<option value="done"'+(REFUND_DONE==='done'?' selected':'')+'>이체: 완료만</option>'
       +'</select>'
       +'<button class="rf-tool rf-tool-print" onclick="printRefund()">🖨 인쇄</button>'
-      +'<button class="rf-tool rf-tool-dl" onclick="genBankTransferLatest()">🏦 이체 엑셀 다운</button>'
+      +'<button class="rf-tool rf-tool-dl" onclick="genBankTransferSelected()" title="체크한 기간을 한 파일로. 미선택 시 최신 기간">🏦 이체 엑셀 다운</button>'
       +'<button class="rf-tool rf-tool-rf" onclick="refreshRefund()" title="시트 최신 데이터 다시 불러오기">🔄 새로고침</button>'
       +'<button class="rf-tool rf-tool-acct" onclick="showAccounts()">📇 계좌·연락처</button></div>';
     if(!recs.length){
@@ -2062,39 +2075,48 @@ function renderOfferRefund(){
         var sk=x.grp+'|'+x.sun, rr=batches[bk].rows[sk]||(batches[bk].rows[sk]={grp:x.grp,sun:x.sun,amount:0,refund:0,done:0,cnt:0});
         rr.amount+=x.amount; rr.refund+=x.refund; rr.cnt++; if(x.done) rr.done++;
       });
-      Object.keys(batches).sort().forEach(function(bk){
+      var batchKeys=Object.keys(batches).sort();
+      var TOTAL_SUNS=REFUND_GRPS.reduce(function(a,g){return a+(REFUND_SUBS[g]||[]).length;},0);
+      if(batchKeys.length>1){
+        html+='<tr class="rf-allctrl"><td colspan="6"><button class="rf-mini" onclick="rfCollapseAll(true)">▶ 모두 접기</button> <button class="rf-mini" onclick="rfCollapseAll(false)">▼ 모두 열기</button> &nbsp;|&nbsp; <button class="rf-mini" onclick="rfCheckAll(true)">☑ 전체 선택</button> <button class="rf-mini" onclick="rfCheckAll(false)">☐ 전체 해제</button></td></tr>';
+      }
+      batchKeys.forEach(function(bk){
         var b=batches[bk];
         var win=rfWindow(b.minDate||bk);
-        html+='<tr class="rf-batch"><td colspan="6">📅 '+(win||bk)+' 입금분 &nbsp;<span style="font-weight:500;color:var(--muted);font-size:11px">→ 다음주 수요일 이체</span></td></tr>';
-        // 기간 합계는 항상 실제 입금(모든 순) 기준
-        var bAmt=0,bRef=0,bChu=0,bRet=0,bDone=0,bCnt=0, shown=0, unpaidCnt=0;
+        var collapsed=!!REFUND_COLLAPSED[bk];
+        var dsp=collapsed?'display:none;':'';
+        var rowsHtml='', bAmt=0,bRef=0,bChu=0,bRet=0,bDone=0,bCnt=0, shown=0, unpaidCnt=0;
         REFUND_GRPS.forEach(function(g){
           (REFUND_SUBS[g]||[]).forEach(function(s){
             var rr=b.rows[g+'|'+s]||{grp:g,sun:s,amount:0,refund:0,done:0,cnt:0};
             var paid=rr.cnt>0, mc=moneyCells(rr.amount, rr.refund);
-            // 합계 누적(실제 입금 기준)
             bAmt+=rr.amount;bRef+=rr.refund;bChu+=mc.chu;bRet+=mc.ret;bDone+=rr.done;bCnt+=rr.cnt;
             gAmt+=rr.amount;gRef+=rr.refund;gChu+=mc.chu;gRet+=mc.ret;gDone+=rr.done;gCnt+=rr.cnt;
             if(!paid) unpaidCnt++;
-            // 표시 필터: 입금상태 + 이체상태
             var state = !paid ? 'none' : (rr.done>=rr.cnt ? 'done' : 'pending');
             var depPass = REFUND_DEP==='all' || (REFUND_DEP==='paid'&&paid) || (REFUND_DEP==='unpaid'&&!paid);
             var donePass = REFUND_DONE==='all' || (REFUND_DONE==='pending'&&state==='pending') || (REFUND_DONE==='done'&&state==='done');
             if(!(depPass && donePass)) return;
             shown++;
-            html+='<tr'+(paid?'':' style="opacity:.7"')+'><td style="text-align:left;font-weight:600">'+esc(rfSunLabel(g,s))+'</td>'
+            rowsHtml+='<tr data-b="'+bk+'" style="'+dsp+(paid?'':'opacity:.7;')+'"><td style="text-align:left;font-weight:600">'+esc(rfSunLabel(g,s))+'</td>'
               +mc.html+'<td style="text-align:center">'+rfDepBadge(paid,rr.done,rr.cnt)+'</td></tr>';
           });
         });
         if(!shown){
-          html+='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:10px;font-size:12px">해당 조건의 순이 없습니다</td></tr>';
+          rowsHtml+='<tr data-b="'+bk+'" style="'+dsp+'"><td colspan="6" style="text-align:center;color:var(--muted);padding:10px;font-size:12px">해당 조건의 순이 없습니다</td></tr>';
         }
-        html+='<tr class="rf-sub"><td style="text-align:left;font-weight:800">└ 기간 합계 <span style="font-weight:600;color:var(--muted);font-size:11px">(미입금 '+unpaidCnt+'순)</span></td>'
+        rowsHtml+='<tr class="rf-sub" data-b="'+bk+'" style="'+dsp+'"><td style="text-align:left;font-weight:800">└ 기간 합계 <span style="font-weight:600;color:var(--muted);font-size:11px">(미입금 '+unpaidCnt+'순)</span></td>'
           +'<td style="text-align:right;font-weight:800">'+fmt(bAmt)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#9a3412">'+fmt(bRef)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#1e40af">'+fmt(bChu)+'</td>'
           +'<td style="text-align:right;font-weight:800;color:#166534">'+fmt(bRet)+'</td>'
           +'<td style="text-align:center;font-size:11px;color:var(--sub)">'+bDone+'/'+bCnt+' 이체</td></tr>';
+        // 헤더(접기 토글 + 요약)
+        html+='<tr class="rf-batch" data-bh="'+bk+'" onclick="rfToggleBatch(\''+bk+'\')" style="cursor:pointer">'
+          +'<td colspan="6"><input type="checkbox" class="rf-cb" data-cb="'+bk+'" onclick="event.stopPropagation()" title="이체 엑셀에 포함"> <span class="rf-arrow">'+(collapsed?'▶':'▼')+'</span> 📅 '+(win||bk)+' 입금분'
+          +' <span style="font-weight:700;color:#9a3412;font-size:12px">· 순환급 '+fmt(bRef)+'</span>'
+          +' <span style="font-weight:500;color:var(--muted);font-size:11px">· 입금 '+(TOTAL_SUNS-unpaidCnt)+'순/미입금 '+unpaidCnt+'순 · 다음주 수요일 이체</span></td></tr>';
+        html+=rowsHtml;
       });
     } else {
       var agg={};
@@ -2123,7 +2145,7 @@ function renderOfferRefund(){
       +'<td style="text-align:right;font-weight:800;color:#1e40af">'+fmt(gChu)+'</td>'
       +'<td style="text-align:right;font-weight:800;color:#166534">'+fmt(gRet)+'</td>'
       +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr></tfoot></table></div>';
-    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 14개 순을 모두 표시하며, 그 기간 입금이 없는 순은 <b style="color:#b45309">미입금</b>으로 표시됩니다. 상단 "입금" 필터로 입금/미입금/모두를 구분해 볼 수 있습니다. (기간·전체 합계는 항상 실제 입금 기준)<br>※ 입금액 배분 → <b style="color:#9a3412">순환급 40%</b>(각 순 이체) · <b style="color:#1e40af">교회입금 20%</b> · <b style="color:#166534">보유 40%</b>.<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 14개 순을 모두 표시하며, 그 기간 입금이 없는 순은 <b style="color:#b45309">미입금</b>으로 표시됩니다. 상단 "입금" 필터로 입금/미입금/모두를 구분해 볼 수 있습니다. (기간·전체 합계는 항상 실제 입금 기준)<br>※ 각 기간 헤더의 <b>체크박스</b>로 여러 기간을 고른 뒤 <b>🏦 이체 엑셀 다운</b>을 누르면 선택한 기간을 한 파일로 합쳐 만듭니다. (아무것도 선택 안 하면 최신 기간)<br>※ 입금액 배분 → <b style="color:#9a3412">순환급 40%</b>(각 순 이체) · <b style="color:#1e40af">교회입금 20%</b> · <b style="color:#166534">보유 40%</b>.<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
     c.innerHTML=html;
   });
 }
@@ -2131,6 +2153,20 @@ function setRefundView(mode){
   REFUND_VIEW = (mode==='sum')?'sum':'week';
   renderOfferRefund();
 }
+function rfToggleBatch(key){
+  REFUND_COLLAPSED[key]=!REFUND_COLLAPSED[key];
+  var col=REFUND_COLLAPSED[key];
+  document.querySelectorAll('#refundTbl tr[data-b="'+key+'"]').forEach(function(tr){ tr.style.display=col?'none':''; });
+  var ar=document.querySelector('#refundTbl tr[data-bh="'+key+'"] .rf-arrow'); if(ar) ar.textContent=col?'▶':'▼';
+}
+function rfCollapseAll(col){
+  document.querySelectorAll('#refundTbl tr[data-bh]').forEach(function(h){
+    var key=h.getAttribute('data-bh'); REFUND_COLLAPSED[key]=col;
+    var ar=h.querySelector('.rf-arrow'); if(ar) ar.textContent=col?'▶':'▼';
+  });
+  document.querySelectorAll('#refundTbl tr[data-b]').forEach(function(tr){ tr.style.display=col?'none':''; });
+}
+function rfCheckAll(on){ document.querySelectorAll('#refundTbl input.rf-cb').forEach(function(b){ b.checked=on; }); }
 function printRefund(){
   var tbl=document.getElementById('refundTbl'); if(!tbl){alert('먼저 환급 탭을 열어주세요.');return;}
   var win=window.open('','_blank','width=920,height=720');
