@@ -1427,27 +1427,53 @@ function sunCell(v6, v5, cmp) {
     +'<div class="cmp-curr">'+(v6>0?fmt(v6):'—')+'</div>'
     +(df!==0?'<div class="cmp-diff '+cls+'">'+(df>0?'+':'')+fmtS(df)+'</div>':'')+'</div>';
 }
+function monthlyRefund(yr){
+  var refund=new Array(12).fill(0), church=new Array(12).fill(0);
+  if(REFUND_RAW){
+    REFUND_RAW.forEach(function(x){
+      if(x.year!==yr || REFUND_GRPS.indexOf(x.grp)<0) return;
+      var m=x.month; if(m>=1&&m<=12){ refund[m-1]+=x.refund; church[m-1]+=Math.round(x.amount*0.2); }
+    });
+  }
+  return {refund:refund, church:church};
+}
 function renderOfferMonthly(d6, d5) {
   killC('offerChart');
   var inc6 = monthlyOffer(d6);
   var inc5 = d5 ? monthlyOffer(d5) : null;
-  var ds = [{label:'2026년',data:inc6,backgroundColor:'rgba(180,83,9,.8)',borderRadius:5,borderSkipped:false}];
-  if (inc5) ds.unshift({label:'2025년',data:inc5,backgroundColor:'rgba(148,163,184,.8)',borderRadius:5,borderSkipped:false});
+  var rfLoaded = !!REFUND_RAW;
+  var ds = [];
+  if (rfLoaded) {
+    var rf6 = monthlyRefund('2026');
+    var retain6 = inc6.map(function(v,i){ return Math.max(0, v - rf6.refund[i] - rf6.church[i]); });
+    ds.push({label:'순환급(40%)', data:rf6.refund, backgroundColor:'rgba(180,83,9,.85)', stack:'y2026', borderRadius:2});
+    ds.push({label:'교회입금(20%)', data:rf6.church, backgroundColor:'rgba(30,64,175,.8)', stack:'y2026', borderRadius:2});
+    ds.push({label:'보유(40%)', data:retain6, backgroundColor:'rgba(22,101,52,.8)', stack:'y2026', borderRadius:3, borderSkipped:false});
+  } else {
+    ds.push({label:'2026년 순헌금', data:inc6, backgroundColor:'rgba(180,83,9,.8)', stack:'y2026', borderRadius:5, borderSkipped:false});
+  }
+  if (inc5) ds.unshift({label:'2025년 입금', data:inc5, backgroundColor:'rgba(148,163,184,.8)', stack:'y2025', borderRadius:5, borderSkipped:false});
   CHARTS.offerChart = new Chart(document.getElementById('offerChart'),{
     type:'bar',data:{labels:MN,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
       onClick:function(evt,els){
         if(!els||!els.length)return;
         var el=els[0], dsList=CHARTS.offerChart.data.datasets;
-        var lbl=(dsList[el.datasetIndex]&&dsList[el.datasetIndex].label)||'';
-        var yr=(lbl.indexOf('2025')>=0)?'2025':'2026';
+        var st=(dsList[el.datasetIndex]&&dsList[el.datasetIndex].stack)||'';
+        var yr=(st==='y2025')?'2025':'2026';
         jumpToOfferTx(el.index+1, yr);
       },
       onHover:function(evt,els){ if(evt&&evt.native&&evt.native.target) evt.native.target.style.cursor=els.length?'pointer':'default'; },
-      plugins:{legend:{labels:{color:'#475569',font:{size:12},usePointStyle:true}}},
-      scales:{x:{ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}},
-        y:{ticks:{color:'#94a3b8',font:{size:11},callback:function(v){return fmtS(v);}},grid:{color:'rgba(0,0,0,.05)'},border:{display:false}}}}
+      plugins:{legend:{labels:{color:'#475569',font:{size:12},usePointStyle:true}},
+        tooltip:{callbacks:{footer:function(items){
+          var t26=0,t25=0; items.forEach(function(it){ if(it.dataset.stack==='y2026')t26+=(it.parsed.y||0); else if(it.dataset.stack==='y2025')t25+=(it.parsed.y||0); });
+          var out=[]; if(t26)out.push('2026 입금합계: '+fmt(t26)); if(t25)out.push('2025 입금합계: '+fmt(t25));
+          return out.join('\n');
+        }}}},
+      scales:{x:{stacked:true,ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}},
+        y:{stacked:true,ticks:{color:'#94a3b8',font:{size:11},callback:function(v){return fmtS(v);}},grid:{color:'rgba(0,0,0,.05)'},border:{display:false}}}}
   });
+  if(!rfLoaded){ try{ loadRefund(function(){ if(CHARTS.offerChart) renderOfferMonthly(d6,d5); }); }catch(e){} }
   var hd='<tr><th>월</th><th>2026년</th>'; if(inc5)hd+='<th>2025년</th><th>증감</th><th>증감률</th>'; hd+='<th>비고</th></tr>';
   document.getElementById('offerMHead').innerHTML=hd;
   var t6=0,t5=0;
