@@ -124,6 +124,12 @@ html,body{min-height:100vh;background:linear-gradient(180deg,#fdfbf5 0%,#f4efe4 
 .rep-tbl{font-size:12px;min-width:640px}
 .rep-tbl th,.rep-tbl td{border:1px solid var(--border);padding:5px 7px;white-space:nowrap}
 .rep-tbl thead th{background:#eef2f7;color:var(--sub);font-weight:700}
+.rep-grp{vertical-align:middle;text-align:center;font-weight:800;background:#f7f9fc;white-space:nowrap}
+.rep-cell{text-align:right;line-height:1.25}
+.rep-ref{color:#9a3412;font-size:10px}
+.rep-tot{font-weight:700;background:#fbfbfd}
+.rep-sub td{background:#eef4fb;font-weight:800}
+.rep-grand td{background:#dbeafe;font-weight:800}
 #refundTbl thead th{font-size:14px}
 .offer-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right}
 .offer-tbl td:first-child{text-align:left;font-weight:600;color:var(--sub)}
@@ -1472,38 +1478,44 @@ function buildHalfReport(year, half){
   return {year:year, half:half, months:activeMonths, weekCols:weekCols, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
 }
 function halfLabel(half){ return half==='H2'?'하반기(7~12월)':'상반기(1~6월)'; }
-/* 한 블록(표) HTML 생성 (순헌금 또는 환급금) */
-function repTableHTML(rep, title, sunMap, tblId){
+/* 셀 표시: 입금액 아래 괄호로 환급금 */
+function repCellHTML(off,ref){ if(!off&&!ref)return ''; var s=off?kNum(off):''; if(ref)s+=(off?'<br>':'')+'<span class="rep-ref">('+kNum(ref)+')</span>'; return s; }
+function repCellTxt(off,ref){ if(!off&&!ref)return ''; var s=off?kNum(off):''; if(ref)s+=(off?' ':'')+'('+kNum(ref)+')'; return s; }
+/* 반기 보고서 표 HTML (다락방 세로 병합 + 환급금 괄호) */
+function repTableHTML(rep){
   var months=rep.months, weekCols=rep.weekCols, totalWeekCols=0;
   months.forEach(function(m){ totalWeekCols+=weekCols[m].length; });
-  var h1='<tr><th rowspan="2" style="text-align:left">다락방/순</th><th rowspan="2">순장</th><th rowspan="2">권찰</th>';
+  var h1='<tr><th colspan="2" rowspan="2" style="text-align:left">다락방/순</th><th rowspan="2">순장명</th><th rowspan="2">권찰</th>';
   months.forEach(function(m){ h1+='<th colspan="'+weekCols[m].length+'">'+m+'월</th>'; });
   h1+='<th rowspan="2">합계</th></tr>';
   var h2='<tr>'; months.forEach(function(m){ weekCols[m].forEach(function(w){ h2+='<th>'+w+'주</th>'; }); }); h2+='</tr>';
-  var body='', colTotals=new Array(totalWeekCols).fill(0), grand=0;
-  REPORT_GRPS.forEach(function(g){
-    var gWeek=new Array(totalWeekCols).fill(0), gTot=0;
-    (REFUND_SUBS[g]||[]).forEach(function(s){
-      var k=g+'|'+s, sd=sunMap[k], info=SUN_INFO[k]||['',''];
-      var row='<tr><td style="text-align:left;white-space:nowrap">'+esc(g+' '+s)+'</td><td style="white-space:nowrap">'+esc(info[0])+'</td><td style="white-space:nowrap">'+esc(info[1])+'</td>';
-      var ci=0, rowTot=0;
+  var body='', colOff=new Array(totalWeekCols).fill(0), colRef=new Array(totalWeekCols).fill(0), gOff=0, gRef=0;
+  REPORT_GRPS.forEach(function(g, gi){
+    var suns=REFUND_SUBS[g]||[];
+    var gWeekOff=new Array(totalWeekCols).fill(0), gWeekRef=new Array(totalWeekCols).fill(0), gTotOff=0, gTotRef=0;
+    suns.forEach(function(s, si){
+      var k=g+'|'+s, sd=rep.sun[k], rd=rep.refundSun[k], info=SUN_INFO[k]||['',''];
+      var row='<tr>';
+      if(si===0) row+='<td rowspan="'+(suns.length+1)+'" class="rep-grp">'+(gi+1)+'. '+esc(g)+'다락방</td>';
+      row+='<td style="text-align:left;white-space:nowrap">'+esc(g+' '+s)+'</td><td style="white-space:nowrap">'+esc(info[0])+'</td><td style="white-space:nowrap">'+esc(info[1])+'</td>';
+      var ci=0, rowOff=0, rowRef=0;
       months.forEach(function(m){ weekCols[m].forEach(function(w){
-        var v=(sd&&sd.m[m]&&sd.m[m][w])||0; gWeek[ci]+=v; colTotals[ci]+=v; rowTot+=v; ci++;
-        row+='<td style="text-align:right">'+(v?kNum(v):'')+'</td>';
+        var ov=(sd&&sd.m[m]&&sd.m[m][w])||0, rv=(rd&&rd.m[m]&&rd.m[m][w])||0;
+        gWeekOff[ci]+=ov; gWeekRef[ci]+=rv; colOff[ci]+=ov; colRef[ci]+=rv; rowOff+=ov; rowRef+=rv; ci++;
+        row+='<td class="rep-cell">'+repCellHTML(ov,rv)+'</td>';
       }); });
-      row+='<td style="text-align:right;font-weight:700">'+(rowTot?kNum(rowTot):'')+'</td></tr>';
-      body+=row; gTot+=rowTot;
+      row+='<td class="rep-cell rep-tot">'+repCellHTML(rowOff,rowRef)+'</td></tr>';
+      body+=row; gTotOff+=rowOff; gTotRef+=rowRef;
     });
-    var grow='<tr style="background:#eef2f7;font-weight:800"><td colspan="3" style="text-align:left">'+esc(g)+'다락방 합계 <span style="font-weight:600;color:var(--muted);font-size:11px">(다락방장 '+esc(DARAK_HEAD[g]||'')+')</span></td>';
-    gWeek.forEach(function(v){ grow+='<td style="text-align:right">'+(v?kNum(v):'')+'</td>'; });
-    grow+='<td style="text-align:right">'+kNum(gTot)+'</td></tr>';
-    body+=grow; grand+=gTot;
+    var grow='<tr class="rep-sub"><td colspan="3" style="text-align:center;font-weight:800">합계</td>';
+    for(var i=0;i<totalWeekCols;i++) grow+='<td class="rep-cell">'+repCellHTML(gWeekOff[i],gWeekRef[i])+'</td>';
+    grow+='<td class="rep-cell rep-tot">'+repCellHTML(gTotOff,gTotRef)+'</td></tr>';
+    body+=grow; gOff+=gTotOff; gRef+=gTotRef;
   });
-  var trow='<tr style="background:#dbeafe;font-weight:800"><td colspan="3" style="text-align:left">전체 합계</td>';
-  colTotals.forEach(function(v){ trow+='<td style="text-align:right">'+(v?kNum(v):'')+'</td>'; });
-  trow+='<td style="text-align:right">'+kNum(grand)+'</td></tr>';
-  return '<div style="font-weight:800;font-size:14px;margin:14px 2px 8px">'+esc(title)+'</div>'
-    +'<div class="tbl-sc"><table class="offer-tbl rep-tbl" id="'+tblId+'"><thead>'+h1+h2+'</thead><tbody>'+body+trow+'</tbody></table></div>';
+  var trow='<tr class="rep-grand"><td colspan="4" style="text-align:center;font-weight:800">전체 합계</td>';
+  for(var i=0;i<totalWeekCols;i++) trow+='<td class="rep-cell">'+repCellHTML(colOff[i],colRef[i])+'</td>';
+  trow+='<td class="rep-cell rep-tot">'+repCellHTML(gOff,gRef)+'</td></tr>';
+  return '<div class="tbl-sc"><table class="offer-tbl rep-tbl" id="repTbl"><thead>'+h1+h2+'</thead><tbody>'+body+trow+'</tbody></table></div>';
 }
 function renderOfferReport(){
   var c=document.getElementById('offerReportContent'); if(!c) return;
@@ -1516,75 +1528,66 @@ function renderOfferReport(){
   if(!rep){ c.innerHTML=head+'<div class="empty">데이터 없음</div>'; return; }
   if(!rep.months.length){ c.innerHTML=head+'<div class="empty"><div class="empty-i">📭</div><div>'+halfLabel(REPORT_HALF)+' 순헌금 데이터가 없습니다.</div></div>'; return; }
   var yl='2026년 '+halfLabel(REPORT_HALF);
-  var html=head + repTableHTML(rep, '＜'+yl+' 순헌금 현황＞', rep.sun, 'repTbl');
-  if(rep.hasRefund){
-    html+=repTableHTML(rep, '＜'+yl+' 순헌금 환급금(40%) 현황＞', rep.refundSun, 'repTblRefund');
-  } else if(!REFUND_RAW){
-    html+='<div style="font-size:12px;color:var(--muted);margin:12px 2px">💸 순헌금 환급금(40%) 불러오는 중...</div>';
-  } else {
-    html+='<div style="font-size:12px;color:var(--muted);margin:12px 2px">💸 이 반기에는 순헌금 환급금(40%) 대상이 없습니다.</div>';
-  }
-  html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 해당 주차 금액입니다. 빈칸은 없음. 순장·권찰은 순 조직 정보입니다.</div>';
+  var html=head+'<div style="font-weight:800;font-size:14px;margin:6px 2px 10px">＜'+yl+' 순헌금 현황＞ <span style="font-weight:600;font-size:11px;color:#9a3412">( ) 안은 순헌금 환급금 40%</span></div>'
+    + repTableHTML(rep);
+  if(!rep.hasRefund && !REFUND_RAW) html+='<div style="font-size:12px;color:var(--muted);margin:8px 2px">💸 환급금(40%) 불러오는 중...</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 주차별 순헌금 입금액이며, 아래 괄호는 그 순헌금의 환급금(40%)입니다. 빈칸은 없음.</div>';
   c.innerHTML=html;
   if(!REFUND_RAW){ try{ loadRefund(function(){ if(OFFER_TAB==='report') renderOfferReport(); }); }catch(e){} }
 }
-/* 엑셀용 한 블록 AOA (제목+2단 헤더+데이터) */
-function repBlockAOA(rep, title, sunMap){
+/* 엑셀 AOA (다락방 세로병합 + 환급금 괄호) */
+function repBlockAOA(rep){
   var months=rep.months, weekCols=rep.weekCols, totalWeekCols=0;
   months.forEach(function(m){ totalWeekCols+=weekCols[m].length; });
-  var LBL=3, totalCols=LBL+totalWeekCols+1;
-  var titleRow=new Array(totalCols).fill(''); titleRow[0]=title;
-  var top=['다락방/순','순장','권찰'], sub=['','',''];
-  months.forEach(function(m){ var ws=weekCols[m]; top.push(m+'월'); for(var i=1;i<ws.length;i++)top.push(''); ws.forEach(function(w){ sub.push(w+'주'); }); });
-  top.push('합계'); sub.push('');
-  var aoa=[titleRow, top, sub], colTotals=new Array(totalWeekCols).fill(0), grand=0;
-  REPORT_GRPS.forEach(function(g){
-    var gWeek=new Array(totalWeekCols).fill(0), gTot=0;
-    (REFUND_SUBS[g]||[]).forEach(function(s){
-      var k=g+'|'+s, sd=sunMap[k], info=SUN_INFO[k]||['',''];
-      var row=[g+' '+s, info[0], info[1]], ci=0, rowTot=0;
+  var LBL=4, totalCols=LBL+totalWeekCols+1;
+  var title=new Array(totalCols).fill(''); title[0]='＜2026년 '+halfLabel(rep.half)+' 순헌금 현황 (괄호: 순헌금 환급금 40%)＞';
+  var top=new Array(totalCols).fill(''); top[0]='다락방/순'; top[2]='순장명'; top[3]='권찰'; top[totalCols-1]='합계';
+  var sub=new Array(totalCols).fill('');
+  var col=LBL; months.forEach(function(m){ top[col]=m+'월'; weekCols[m].forEach(function(w,wi){ sub[col+wi]=w+'주'; }); col+=weekCols[m].length; });
+  var aoa=[title, top, sub];
+  var merges=[{s:{r:0,c:0},e:{r:0,c:totalCols-1}},{s:{r:1,c:0},e:{r:2,c:1}},{s:{r:1,c:2},e:{r:2,c:2}},{s:{r:1,c:3},e:{r:2,c:3}},{s:{r:1,c:totalCols-1},e:{r:2,c:totalCols-1}}];
+  var cc=LBL; months.forEach(function(m){ var n=weekCols[m].length; if(n>1)merges.push({s:{r:1,c:cc},e:{r:1,c:cc+n-1}}); cc+=n; });
+  var colOff=new Array(totalWeekCols).fill(0), colRef=new Array(totalWeekCols).fill(0), gOff=0, gRef=0;
+  REPORT_GRPS.forEach(function(g, gi){
+    var suns=REFUND_SUBS[g]||[];
+    var gWeekOff=new Array(totalWeekCols).fill(0), gWeekRef=new Array(totalWeekCols).fill(0), gTotOff=0, gTotRef=0;
+    var grpStart=aoa.length;
+    suns.forEach(function(s, si){
+      var k=g+'|'+s, sd=rep.sun[k], rd=rep.refundSun[k], info=SUN_INFO[k]||['',''];
+      var row=[ si===0?((gi+1)+'. '+g+'다락방'):'', g+' '+s, info[0], info[1] ], ci=0, rowOff=0, rowRef=0;
       months.forEach(function(m){ weekCols[m].forEach(function(w){
-        var v=(sd&&sd.m[m]&&sd.m[m][w])||0; gWeek[ci]+=v; colTotals[ci]+=v; rowTot+=v; ci++; row.push(v||'');
+        var ov=(sd&&sd.m[m]&&sd.m[m][w])||0, rv=(rd&&rd.m[m]&&rd.m[m][w])||0;
+        gWeekOff[ci]+=ov; gWeekRef[ci]+=rv; colOff[ci]+=ov; colRef[ci]+=rv; rowOff+=ov; rowRef+=rv; ci++; row.push(repCellTxt(ov,rv));
       }); });
-      row.push(rowTot||''); aoa.push(row); gTot+=rowTot;
+      row.push(repCellTxt(rowOff,rowRef)); aoa.push(row); gTotOff+=rowOff; gTotRef+=rowRef;
     });
-    var grow=[g+'다락방 합계 (다락방장 '+(DARAK_HEAD[g]||'')+')','','']; gWeek.forEach(function(v){ grow.push(v||''); }); grow.push(gTot); aoa.push(grow); grand+=gTot;
+    var grow=['', '합계','','']; for(var i=0;i<totalWeekCols;i++)grow.push(repCellTxt(gWeekOff[i],gWeekRef[i])); grow.push(repCellTxt(gTotOff,gTotRef)); aoa.push(grow);
+    var grpEnd=aoa.length-1;
+    merges.push({s:{r:grpStart,c:0},e:{r:grpEnd,c:0}});
+    merges.push({s:{r:grpEnd,c:1},e:{r:grpEnd,c:3}});
+    gOff+=gTotOff; gRef+=gTotRef;
   });
-  var trow=['전체 합계','','']; colTotals.forEach(function(v){ trow.push(v||''); }); trow.push(grand); aoa.push(trow);
-  var merges=[{s:{r:0,c:0},e:{r:0,c:totalCols-1}},{s:{r:1,c:0},e:{r:2,c:0}},{s:{r:1,c:1},e:{r:2,c:1}},{s:{r:1,c:2},e:{r:2,c:2}}];
-  var col=LBL; months.forEach(function(m){ var n=weekCols[m].length; if(n>1) merges.push({s:{r:1,c:col},e:{r:1,c:col+n-1}}); col+=n; });
-  merges.push({s:{r:1,c:col},e:{r:2,c:col}});
-  return {aoa:aoa, merges:merges, totalCols:totalCols, height:aoa.length};
+  var grandRow=aoa.length;
+  var trow=['전체 합계','','','']; for(var i=0;i<totalWeekCols;i++)trow.push(repCellTxt(colOff[i],colRef[i])); trow.push(repCellTxt(gOff,gRef)); aoa.push(trow);
+  merges.push({s:{r:grandRow,c:0},e:{r:grandRow,c:3}});
+  return {aoa:aoa, merges:merges, totalCols:totalCols};
 }
 function downloadHalfReportExcel(){
   var rep=buildHalfReport('2026', REPORT_HALF); if(!rep || !rep.months.length){ alert('해당 반기 순헌금 데이터가 없습니다.'); return; }
   if(typeof XLSX==='undefined'){ alert('엑셀 라이브러리를 불러올 수 없습니다.'); return; }
-  var yl='2026년 '+halfLabel(REPORT_HALF);
-  var blocks=[repBlockAOA(rep, '＜'+yl+' 순헌금 현황＞', rep.sun)];
-  if(rep.hasRefund) blocks.push(repBlockAOA(rep, '＜'+yl+' 순헌금 환급금(40%) 현황＞', rep.refundSun));
-  var aoa=[], merges=[];
-  blocks.forEach(function(b){
-    var base=aoa.length;
-    b.merges.forEach(function(m){ merges.push({s:{r:m.s.r+base,c:m.s.c},e:{r:m.e.r+base,c:m.e.c}}); });
-    b.aoa.forEach(function(r){ aoa.push(r.slice()); });
-    aoa.push([]); aoa.push([]);   // 블록 사이 빈 줄
-  });
-  var totalCols=blocks[0].totalCols;
-  var ws=XLSX.utils.aoa_to_sheet(aoa); ws['!merges']=merges;
-  var cols=[{wch:12},{wch:9},{wch:9}]; for(var i=3;i<totalCols-1;i++)cols.push({wch:8}); cols.push({wch:11}); ws['!cols']=cols;
+  var R=repBlockAOA(rep);
+  var ws=XLSX.utils.aoa_to_sheet(R.aoa); ws['!merges']=R.merges;
+  var cols=[{wch:12},{wch:9},{wch:8},{wch:8}]; for(var i=4;i<R.totalCols-1;i++)cols.push({wch:12}); cols.push({wch:14}); ws['!cols']=cols;
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, (REPORT_HALF==='H2'?'하반기':'상반기')+' 순헌금');
   XLSX.writeFile(wb, '서누리_순헌금_'+(REPORT_HALF==='H2'?'하반기':'상반기')+'_2026.xlsx');
 }
 function printHalfReport(){
   var t1=document.getElementById('repTbl'); if(!t1){ alert('먼저 보고서를 여세요.'); return; }
-  var t2=document.getElementById('repTblRefund');
   var yl='2026년 '+halfLabel(REPORT_HALF);
-  var win=window.open('','_blank','width=1100,height=760');
+  var win=window.open('','_blank','width=1180,height=800');
   win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>순헌금 '+halfLabel(REPORT_HALF)+'</title>');
-  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}body{padding:14px}h3{text-align:center;margin:14px 0 8px}table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:8px}th,td{border:1px solid #b8c2cc;padding:3px 5px;text-align:right}th{background:#eef2f7;text-align:center}td:first-child,th:first-child{text-align:left}@page{size:A4 landscape;margin:8mm}</style></head><body>');
-  win.document.write('<h3>＜'+yl+' 순헌금 현황＞</h3><table>'+t1.innerHTML+'</table>');
-  if(t2) win.document.write('<h3>＜'+yl+' 순헌금 환급금(40%) 현황＞</h3><table>'+t2.innerHTML+'</table>');
-  win.document.write('</body></html>');
+  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}body{padding:12px}h3{text-align:center;margin:8px 0}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #b8c2cc;padding:2px 4px;text-align:right}th{background:#eef2f7;text-align:center}td:first-child,th:first-child{text-align:left}.rep-ref{color:#9a3412;font-size:8px}@page{size:A4 landscape;margin:7mm}</style></head><body>');
+  win.document.write('<h3>＜'+yl+' 순헌금 현황＞ ( ) 순헌금 환급금 40%</h3><table>'+t1.innerHTML+'</table></body></html>');
   win.document.close(); setTimeout(function(){win.print();},500);
 }
 function monthlyRefund(yr){
