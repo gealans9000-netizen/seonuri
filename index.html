@@ -2203,7 +2203,12 @@ function rfDoneBadge(done, cnt){
   if(done>0)   return '<span style="color:#d97706;font-weight:800">부분 '+done+'/'+cnt+'</span>';
   return '<span style="color:#b45309;font-weight:700;background:#fef3c7;padding:1px 7px;border-radius:8px">미완료</span>';
 }
-function rfSunLabel(g,s){ return (GRP_ICON2[g]||'')+' '+g+' '+s; }
+function rfSunLabel(g,s){
+  var base=(GRP_ICON2[g]||'')+' '+g+' '+s;
+  var info=SUN_INFO[g+'|'+s];
+  if(info && (info[0]||info[1])) base+=' ('+(info[0]||'-')+' / '+(info[1]||'-')+')';
+  return base;
+}
 /* 입금 대상 기간: 전주 수요일 ~ 다음주 화요일 (거래 날짜 기준 계산) */
 function rfWindow(dateStr){
   if(!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return '';
