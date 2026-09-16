@@ -2072,7 +2072,7 @@ var REFUND_ACCOUNTS={
   '양선|3순':['농협','3521563464483','문미숙','양선 3순_순헌금 환급','010-3360-4355']
 };
 /* 교회입금(20%) 계좌 — [은행, 계좌, 예금주, 통장표시, 휴대폰, 메모] */
-var REFUND_CHURCH=['하나은행','57391002123705','온누리교회','교회입금 순헌금(20%)','010-2593-1397','김정은 간사'];
+var REFUND_CHURCH=['하나은행','57391002123705','온누리교회(순헌금)','서누리(20%)','010-2593-1397','김정은 간사'];
 /* 순 조직 정보 — [순장, 권찰] / 다락방장 */
 var SUN_INFO={
   '자비|1순':['유동효','임경수'],'자비|2순':['김영철','오현숙'],'자비|3순':['김운도','최성하'],
@@ -2140,7 +2140,7 @@ function genBankTransferKeys(keys){
     var a=REFUND_ACCOUNTS[k];
     if(!a || !a[1]){ missing.push(k.replace('|',' ')); return; }
     var phone=(a[4]||'').replace(/[^0-9]/g,'');
-    var p=k.split('|'), tlabel=p[0]+' '+p[1]+' 환급(40%)';
+    var p=k.split('|'), tlabel=p[0]+p[1]+'환급40%';
     rows.push([a[0], a[1], bySun[k], a[2], tlabel, tlabel, '', '', phone]);
   });
   var sunCnt=rows.length-1;
