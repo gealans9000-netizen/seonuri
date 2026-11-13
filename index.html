@@ -127,6 +127,8 @@ html,body{min-height:100vh;background:linear-gradient(180deg,#fdfbf5 0%,#f4efe4 
 .rep-grp{vertical-align:middle;text-align:center;font-weight:800;background:#f7f9fc;white-space:nowrap}
 .rep-cell{text-align:right;line-height:1.25}
 .rep-ref{color:#9a3412;font-size:10px}
+.rep-dt{font-size:9.5px;font-weight:500;color:var(--muted);margin-top:1px;white-space:nowrap}
+.rf-sep{display:inline-block;width:1px;height:20px;background:var(--border2);margin:0 4px;vertical-align:middle}
 .rep-tot{font-weight:700;background:#fbfbfd}
 .rep-sub td{background:#eef4fb;font-weight:800}
 .rep-grand td{background:#dbeafe;font-weight:800}
@@ -1452,29 +1454,70 @@ function sunCell(v6, v5, cmp) {
 var REPORT_HALF='H1';   // 'H1'=상반기(1~6월), 'H2'=하반기(7~12월)
 var REPORT_GRPS=['자비','양선','충성','온유'];   // 보고서 다락방 나열 순서
 function setReportHalf(h){ REPORT_HALF=(h==='H2')?'H2':'H1'; renderOfferReport(); }
+var REPORT_BASIS='deposit';   // 'deposit'=입금 기준, 'worship'=순예배 기준(입금 한 주 전)
+function setReportBasis(b){ REPORT_BASIS=(b==='worship')?'worship':'deposit'; renderOfferReport(); }
+function basisLabel(b){ return (b||REPORT_BASIS)==='worship'?'순예배 기준':'입금 기준'; }
+/* 시트 주차 규칙: 일요일 시작, 그 달 1일이 든 주 = 1주 */
+function sunWeekOf(dt){ var first=new Date(dt.getFullYear(),dt.getMonth(),1).getDay(); return Math.floor((dt.getDate()+first-1)/7)+1; }
+function parseYMD(s){ var m=String(s||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
+/* 보고서 칸 위치(연·월·주)
+   - 입금 기준: 시트의 월·주차 그대로
+   - 순예배 기준: 입금한 주(일~토)의 바로 앞 주를 순예배 주로 보고,
+     그 주의 주일(일요일)이 속한 달의 '몇째 주일'로 셈 (첫째 주일이 든 주 = 1주)
+     → 달이 바뀌는 주도 둘로 갈라지지 않음 */
+function repSlot(year, month, week, date){
+  var w=parseInt(week,10)||1;
+  if(REPORT_BASIS!=='worship') return {y:String(year), m:month, w:w};
+  var dt=parseYMD(date);
+  if(!dt){ // 날짜가 없으면 시트 월·주차의 대략적인 날짜로 추정
+    var f=new Date(+year,month-1,1); dt=new Date(+year,month-1,1+(w-1)*7-f.getDay());
+    if(dt.getMonth()!==month-1) dt=f;
+  }
+  var sun=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()-dt.getDay()-7); // 앞 주의 주일
+  return {y:String(sun.getFullYear()), m:sun.getMonth()+1, w:Math.ceil(sun.getDate()/7), sun:sun};
+}
+/* 입금일 범위 표시: 같은 달이면 '7~9일', 다른 달이 섞이면 '10/31~11/2' */
+function repDateRange(r, colMonth){
+  if(!r) return '';
+  var a=parseYMD(r.min), b=parseYMD(r.max); if(!a||!b) return '';
+  var am=a.getMonth()+1, bm=b.getMonth()+1, ad=a.getDate(), bd=b.getDate(), t;
+  if(am===bm && am===colMonth) t=ad+(ad!==bd?'~'+bd:'')+'일';
+  else if(am===bm) t=am+'/'+ad+(ad!==bd?'~'+bd:'');
+  else t=am+'/'+ad+'~'+bm+'/'+bd;
+  return t+' 입금';
+}
 /* 반기 보고서 데이터: 순별 × (월×주차) 금액 */
 function buildHalfReport(year, half){
   var d=D[year]; if(!d) return null;
+  year=String(year);
   var months = (half==='H2')?[7,8,9,10,11,12]:[1,2,3,4,5,6];
-  var weeksSeen={}; months.forEach(function(m){ weeksSeen[m]={}; });
+  var weeksSeen={}, dates={}; months.forEach(function(m){ weeksSeen[m]={}; dates[m]={}; });
   var sun={}, refundSun={}, hasRefund=false;
-  d.months.forEach(function(mo){
-    if(months.indexOf(mo.month)<0) return;
-    mo.transactions.forEach(function(t){
-      if(!isOffering(t)) return;
-      var gs=parseGS(t.desc); if(REFUND_GRPS.indexOf(gs.g)<0) return;
-      var w=parseInt(t.week,10)||1; weeksSeen[mo.month][w]=true;
-      var k=gs.g+'|'+gs.s, s=sun[k]||(sun[k]={g:gs.g,s:gs.s,m:{},total:0});
-      var mm=s.m[mo.month]||(s.m[mo.month]={}); mm[w]=(mm[w]||0)+t.amount; s.total+=t.amount;
+  // 순예배 기준이면 다음 해 1월 입금분이 올해 12월로 올 수 있어 불러온 모든 연도를 살핌
+  var srcYears=Object.keys(D).filter(function(y){ return D[y] && (y===year || REPORT_BASIS==='worship'); });
+  srcYears.forEach(function(sy){
+    D[sy].months.forEach(function(mo){
+      mo.transactions.forEach(function(t){
+        if(!isOffering(t)) return;
+        var gs=parseGS(t.desc); if(REFUND_GRPS.indexOf(gs.g)<0) return;
+        var sl=repSlot(sy, mo.month, t.week, t.date);
+        if(sl.y!==year || months.indexOf(sl.m)<0) return;
+        var w=sl.w; weeksSeen[sl.m][w]=true;
+        if(/^\d{4}-\d{1,2}-\d{1,2}/.test(t.date||'')){ var r=dates[sl.m][w]||(dates[sl.m][w]={min:t.date,max:t.date}); if(t.date<r.min)r.min=t.date; if(t.date>r.max)r.max=t.date; }
+        var k=gs.g+'|'+gs.s, s=sun[k]||(sun[k]={g:gs.g,s:gs.s,m:{},total:0});
+        var mm=s.m[sl.m]||(s.m[sl.m]={}); mm[w]=(mm[w]||0)+t.amount; s.total+=t.amount;
+      });
     });
   });
-  // 순헌금 환급금(40%) — 시트 REFUND_RAW 기준
+  // 순헌금 환급금(40%) — 시트 REFUND_RAW 기준 (같은 규칙으로 칸 이동)
   if(REFUND_RAW){
     REFUND_RAW.forEach(function(x){
-      if(x.year!==year || REFUND_GRPS.indexOf(x.grp)<0 || months.indexOf(x.month)<0) return;
-      var w=parseInt(x.week,10)||1; weeksSeen[x.month][w]=true;
+      if(REFUND_GRPS.indexOf(x.grp)<0) return;
+      var sl=repSlot(x.year, x.month, x.week, x.date);
+      if(sl.y!==year || months.indexOf(sl.m)<0) return;
+      var w=sl.w; weeksSeen[sl.m][w]=true;
       var k=x.grp+'|'+x.sun, rs=refundSun[k]||(refundSun[k]={g:x.grp,s:x.sun,m:{},total:0});
-      var mm=rs.m[x.month]||(rs.m[x.month]={}); mm[w]=(mm[w]||0)+x.refund; rs.total+=x.refund; hasRefund=true;
+      var mm=rs.m[sl.m]||(rs.m[sl.m]={}); mm[w]=(mm[w]||0)+x.refund; rs.total+=x.refund; hasRefund=true;
     });
   }
   var weekCols={}; var activeMonths=[];
@@ -1482,7 +1525,7 @@ function buildHalfReport(year, half){
     var ws=Object.keys(weeksSeen[m]).map(Number).sort(function(a,b){return a-b;});
     if(ws.length){ weekCols[m]=ws; activeMonths.push(m); }
   });
-  return {year:year, half:half, months:activeMonths, weekCols:weekCols, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
+  return {year:year, half:half, basis:REPORT_BASIS, months:activeMonths, weekCols:weekCols, dates:dates, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
 }
 function halfLabel(half){ return half==='H2'?'하반기(7~12월)':'상반기(1~6월)'; }
 /* 셀 표시: 입금액 아래 괄호로 환급금 */
@@ -1495,7 +1538,7 @@ function repTableHTML(rep){
   var h1='<tr><th colspan="2" rowspan="2" style="text-align:left">다락방/순</th><th rowspan="2">순장명</th><th rowspan="2">권찰</th>';
   months.forEach(function(m){ h1+='<th colspan="'+weekCols[m].length+'">'+m+'월</th>'; });
   h1+='<th rowspan="2">합계</th></tr>';
-  var h2='<tr>'; months.forEach(function(m){ weekCols[m].forEach(function(w){ h2+='<th>'+w+'주</th>'; }); }); h2+='</tr>';
+  var h2='<tr>'; months.forEach(function(m){ weekCols[m].forEach(function(w){ var dr=repDateRange(rep.dates&&rep.dates[m]&&rep.dates[m][w], m); h2+='<th>'+w+'주'+(dr?'<div class="rep-dt">'+dr+'</div>':'')+'</th>'; }); }); h2+='</tr>';
   var body='', colOff=new Array(totalWeekCols).fill(0), colRef=new Array(totalWeekCols).fill(0), gOff=0, gRef=0;
   REPORT_GRPS.forEach(function(g, gi){
     var suns=REFUND_SUBS[g]||[];
@@ -1530,15 +1573,22 @@ function renderOfferReport(){
   var head='<div class="rf-ctrl">'
     +'<button class="rf-vbtn'+(REPORT_HALF==='H1'?' on':'')+'" onclick="setReportHalf(\'H1\')">상반기 (1~6월)</button>'
     +'<button class="rf-vbtn'+(REPORT_HALF==='H2'?' on':'')+'" onclick="setReportHalf(\'H2\')">하반기 (7~12월)</button>'
+    +'<span class="rf-sep"></span>'
+    +'<button class="rf-vbtn'+(REPORT_BASIS==='worship'?' on':'')+'" onclick="setReportBasis(\'worship\')">⛪ 순예배 기준</button>'
+    +'<button class="rf-vbtn'+(REPORT_BASIS!=='worship'?' on':'')+'" onclick="setReportBasis(\'deposit\')">💳 입금 기준</button>'
     +'<button class="rf-tool rf-tool-dl" onclick="downloadHalfReportExcel()">📥 엑셀 다운로드</button>'
     +'<button class="rf-tool rf-tool-print" onclick="printHalfReport()">🖨 인쇄</button></div>';
   if(!rep){ c.innerHTML=head+'<div class="empty">데이터 없음</div>'; return; }
   if(!rep.months.length){ c.innerHTML=head+'<div class="empty"><div class="empty-i">📭</div><div>'+halfLabel(REPORT_HALF)+' 순헌금 데이터가 없습니다.</div></div>'; return; }
-  var yl=CY+'년 '+halfLabel(REPORT_HALF);
+  var yl=CY+'년 '+halfLabel(REPORT_HALF)+' · '+basisLabel();
   var html=head+'<div style="font-weight:800;font-size:14px;margin:6px 2px 10px">＜'+yl+' 순헌금 현황＞ <span style="font-weight:600;font-size:11px;color:#9a3412">( ) 안은 순헌금 환급금 40%</span></div>'
     + repTableHTML(rep);
   if(!rep.hasRefund && !REFUND_RAW) html+='<div style="font-size:12px;color:var(--muted);margin:8px 2px">💸 환급금(40%) 불러오는 중...</div>';
-  html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 주차별 순헌금 입금액이며, 아래 괄호는 그 순헌금의 환급금(40%)입니다. 빈칸은 없음.</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 주차별 순헌금 입금액이며, 아래 괄호는 그 순헌금의 환급금(40%)입니다. 빈칸은 없음.'
+    +(REPORT_BASIS==='worship'
+      ? '<br>※ 순예배 기준: 입금한 주의 바로 앞 주에 모인 순예배로 옮겨 집계했습니다. 주차는 그 달 첫째 주일(일요일)이 든 주를 1주로 셉니다. 주차 아래 날짜는 실제 입금일입니다.'
+      : '<br>※ 입금 기준: 실제 입금된 주차로 집계했습니다. 주차 아래 날짜는 그 주의 입금일입니다.')
+    +'</div>';
   c.innerHTML=html;
   if(!REFUND_RAW){ try{ loadRefund(function(){ if(OFFER_TAB==='report') renderOfferReport(); }); }catch(e){} }
 }
@@ -1547,10 +1597,10 @@ function repBlockAOA(rep){
   var months=rep.months, weekCols=rep.weekCols, totalWeekCols=0;
   months.forEach(function(m){ totalWeekCols+=weekCols[m].length; });
   var LBL=4, totalCols=LBL+totalWeekCols+1;
-  var title=new Array(totalCols).fill(''); title[0]='＜'+rep.year+'년 '+halfLabel(rep.half)+' 순헌금 현황 (괄호: 순헌금 환급금 40%)＞';
+  var title=new Array(totalCols).fill(''); title[0]='＜'+rep.year+'년 '+halfLabel(rep.half)+' 순헌금 현황 · '+basisLabel(rep.basis)+' (괄호: 순헌금 환급금 40%)＞';
   var top=new Array(totalCols).fill(''); top[0]='다락방/순'; top[2]='순장명'; top[3]='권찰'; top[totalCols-1]='합계';
   var sub=new Array(totalCols).fill('');
-  var col=LBL; months.forEach(function(m){ top[col]=m+'월'; weekCols[m].forEach(function(w,wi){ sub[col+wi]=w+'주'; }); col+=weekCols[m].length; });
+  var col=LBL; months.forEach(function(m){ top[col]=m+'월'; weekCols[m].forEach(function(w,wi){ var dr=repDateRange(rep.dates&&rep.dates[m]&&rep.dates[m][w], m); sub[col+wi]=w+'주'+(dr?'\n'+dr:''); }); col+=weekCols[m].length; });
   var aoa=[title, top, sub];
   var merges=[{s:{r:0,c:0},e:{r:0,c:totalCols-1}},{s:{r:1,c:0},e:{r:2,c:1}},{s:{r:1,c:2},e:{r:2,c:2}},{s:{r:1,c:3},e:{r:2,c:3}},{s:{r:1,c:totalCols-1},e:{r:2,c:totalCols-1}}];
   var cc=LBL; months.forEach(function(m){ var n=weekCols[m].length; if(n>1)merges.push({s:{r:1,c:cc},e:{r:1,c:cc+n-1}}); cc+=n; });
@@ -1601,14 +1651,14 @@ function downloadHalfReportExcel(){
     }
   }
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, (REPORT_HALF==='H2'?'하반기':'상반기')+' 순헌금');
-  XLSX.writeFile(wb, '서누리_순헌금_'+(REPORT_HALF==='H2'?'하반기':'상반기')+'_'+CY+'.xlsx');
+  XLSX.writeFile(wb, '서누리_순헌금_'+(REPORT_HALF==='H2'?'하반기':'상반기')+'_'+CY+'_'+(REPORT_BASIS==='worship'?'순예배기준':'입금기준')+'.xlsx');
 }
 function printHalfReport(){
   var t1=document.getElementById('repTbl'); if(!t1){ alert('먼저 보고서를 여세요.'); return; }
-  var yl=CY+'년 '+halfLabel(REPORT_HALF);
+  var yl=CY+'년 '+halfLabel(REPORT_HALF)+' · '+basisLabel();
   var win=window.open('','_blank','width=1180,height=800');
   win.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>순헌금 '+halfLabel(REPORT_HALF)+'</title>');
-  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}body{padding:12px}h3{text-align:center;margin:8px 0}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #b8c2cc;padding:2px 4px;text-align:right}th{background:#eef2f7;text-align:center}td:first-child,th:first-child{text-align:left}.rep-ref{color:#9a3412;font-size:8px}@page{size:A4 landscape;margin:7mm}</style></head><body>');
+  win.document.write('<style>*{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}body{padding:12px}h3{text-align:center;margin:8px 0}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #b8c2cc;padding:2px 4px;text-align:right}th{background:#eef2f7;text-align:center}td:first-child,th:first-child{text-align:left}.rep-ref{color:#9a3412;font-size:8px}.rep-dt{font-size:7px;font-weight:400;color:#64748b}@page{size:A4 landscape;margin:7mm}</style></head><body>');
   win.document.write('<h3>＜'+yl+' 순헌금 현황＞ ( ) 순헌금 환급금 40%</h3><table>'+t1.innerHTML+'</table></body></html>');
   win.document.close(); setTimeout(function(){win.print();},500);
 }
