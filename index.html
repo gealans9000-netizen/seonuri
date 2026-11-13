@@ -679,7 +679,7 @@ tr:hover td{background:var(--bg)}
   <!-- WEEKLY VIEW -->
   <div id="vWeekly" style="display:none">
     <div class="ccrd">
-      <div class="ccrd-title">주차별 현황
+      <div class="ccrd-title">주차별 현황 <span style="font-size:11px;font-weight:500;color:var(--muted)">(입금 주차 기준)</span>
         <div class="leg">
           <span><span class="leg-dot" style="background:var(--green)"></span>수입</span>
           <span><span class="leg-dot" style="background:var(--red)"></span>지출</span>
@@ -709,7 +709,7 @@ tr:hover td{background:var(--bg)}
       </div>
       <div class="tbl-sc">
         <table>
-          <thead><tr><th>날짜</th><th>주차</th><th>구분</th><th>내역</th><th style="text-align:right">수입</th><th style="text-align:right">지출</th><th>비고</th></tr></thead>
+          <thead><tr><th>날짜</th><th>입금 주차</th><th>순예배 주차</th><th>구분</th><th>내역</th><th style="text-align:right">수입</th><th style="text-align:right">지출</th><th>비고</th></tr></thead>
           <tbody id="txBody"></tbody>
         </table>
       </div>
@@ -976,7 +976,7 @@ function renderAll() {
   // 이월금 표시
   if (d.janCarryover > 0) {
     var prevYr = String(+CY - 1);
-    T('balCarry', '📌 ' + prevYr + '년 이월금 (K313): ' + fmt(d.janCarryover));
+    T('balCarry', '📌 ' + prevYr + '년 이월금 ('+(d.carryoverCell||'')+'): ' + fmt(d.janCarryover));
   } else {
     T('balCarry', '');
   }
@@ -1194,7 +1194,7 @@ function renderWeekly() {
     ? wk.map(function(w) {
         var net = w.income - w.expense, nc = net >= 0 ? '--green' : '--red';
         return '<div class="wk-item" onclick="openDrw(' + w.month + ')">'
-          + '<div class="wk-lbl">' + MN[w.month-1] + '<br>' + w.week + '주차</div>'
+          + '<div class="wk-lbl">' + MN[w.month-1] + '<br>입금 ' + w.week + '주차</div>'
           + '<div class="bar-g">'
           + '<div class="bar-t"><div class="bar-f bar-in" style="width:' + (w.income/mx*100).toFixed(1) + '%"></div></div>'
           + '<div class="bar-t"><div class="bar-f bar-ex" style="width:' + (w.expense/mx*100).toFixed(1) + '%"></div></div></div>'
@@ -1282,13 +1282,14 @@ function renderTx() {
   }).join('');
   T('txCnt', '(' + txs.length + '건)');
   if (!txs.length) {
-    document.getElementById('txBody').innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-i">📭</div><div>거래 없음</div></div></td></tr>';
+    document.getElementById('txBody').innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-i">📭</div><div>거래 없음</div></div></td></tr>';
     return;
   }
   document.getElementById('txBody').innerHTML = txs.slice(0,300).map(function(t) {
     var ii = t.dir === 'income';
     return '<tr><td style="color:var(--muted);font-size:12px;white-space:nowrap">'+esc(t.date)+'</td>'
       +'<td style="color:var(--muted);font-size:12px">'+esc(String(t.week||''))+'주</td>'
+      +'<td style="color:var(--sub);font-size:12px;font-weight:600">'+(t.wweek?esc(String(t.wweek))+'주':'')+'</td>'
       +'<td><span class="'+(ii?'b-in':'b-ex')+'">'+esc(t.type)+'</span></td>'
       +'<td style="color:var(--sub);white-space:nowrap">'+esc(t.desc||'-')+'</td>'
       +'<td style="text-align:right;white-space:nowrap" class="a-in">'+(ii?fmt(t.amount):'')+'</td>'
@@ -1460,17 +1461,24 @@ function basisLabel(b){ return (b||REPORT_BASIS)==='worship'?'순예배 기준':
 /* 시트 주차 규칙: 일요일 시작, 그 달 1일이 든 주 = 1주 */
 function sunWeekOf(dt){ var first=new Date(dt.getFullYear(),dt.getMonth(),1).getDay(); return Math.floor((dt.getDate()+first-1)/7)+1; }
 function parseYMD(s){ var m=String(s||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
-/* 보고서 칸 위치(연·월·주) — 구글시트의 월·주차 기준
-   - 입금 기준: 시트 주차 그대로
-   - 순예배 기준: 시트 주차 − 1 (1주차면 앞 달의 마지막 주차) */
+/* 보고서 칸 위치(연·월·주) — 구글시트 기준
+   - 입금 기준: 시트 '월'·'입금 주차' 그대로
+   - 순예배 기준: 시트 '순예배 주차' 열 사용. 순예배 주차가 입금 주차보다 크면
+     (예: 11월 1주 입금 → 순예배 5주차) 앞 달의 주차로 봄.
+     순예배 주차가 비어 있으면 입금 주차 − 1 (1주차면 앞 달 마지막 주차) */
 function lastWeekOfMonth(y, m){ return sunWeekOf(new Date(y, m, 0)); }   // m: 1~12
-function repSlot(year, month, week, date){
-  var y=+year, m=month, w=parseInt(week,10)||1;
+function repSlot(year, month, week, date, wweek){
+  var y=+year, m=month, w=parseInt(week,10)||1, ww=parseInt(wweek,10)||0, est=false;
   if(REPORT_BASIS==='worship'){
-    w-=1;
-    if(w<1){ m-=1; if(m<1){ m=12; y-=1; } w=lastWeekOfMonth(y, m); }
+    if(ww>0){
+      if(ww>w){ m-=1; if(m<1){ m=12; y-=1; } }
+      w=ww;
+    } else {
+      est=true; w-=1;
+      if(w<1){ m-=1; if(m<1){ m=12; y-=1; } w=lastWeekOfMonth(y, m); }
+    }
   }
-  return {y:String(y), m:m, w:w};
+  return {y:String(y), m:m, w:w, est:est};
 }
 /* 시트 주차의 날짜 범위(일요일 시작, 달 안으로 자름) → '1~7일' */
 function repWeekSpan(y, m, w){
@@ -1502,7 +1510,7 @@ function buildHalfReport(year, half){
   year=String(year);
   var months = (half==='H2')?[7,8,9,10,11,12]:[1,2,3,4,5,6];
   var weeksSeen={}, dates={}; months.forEach(function(m){ weeksSeen[m]={}; dates[m]={}; });
-  var sun={}, refundSun={}, hasRefund=false;
+  var sun={}, refundSun={}, hasRefund=false, estCnt=0;
   // 순예배 기준이면 다음 해 1월 입금분이 올해 12월로 올 수 있어 불러온 모든 연도를 살핌
   var srcYears=Object.keys(D).filter(function(y){ return D[y] && (y===year || REPORT_BASIS==='worship'); });
   srcYears.forEach(function(sy){
@@ -1510,9 +1518,9 @@ function buildHalfReport(year, half){
       mo.transactions.forEach(function(t){
         if(!isOffering(t)) return;
         var gs=parseGS(t.desc); if(REFUND_GRPS.indexOf(gs.g)<0) return;
-        var sl=repSlot(sy, mo.month, t.week, t.date);
+        var sl=repSlot(sy, mo.month, t.week, t.date, t.wweek);
         if(sl.y!==year || months.indexOf(sl.m)<0) return;
-        var w=sl.w; weeksSeen[sl.m][w]=true;
+        var w=sl.w; weeksSeen[sl.m][w]=true; if(sl.est) estCnt++;
         if(/^\d{4}-\d{1,2}-\d{1,2}/.test(t.date||'')){ var r=dates[sl.m][w]||(dates[sl.m][w]={min:t.date,max:t.date}); if(t.date<r.min)r.min=t.date; if(t.date>r.max)r.max=t.date; }
         var k=gs.g+'|'+gs.s, s=sun[k]||(sun[k]={g:gs.g,s:gs.s,m:{},total:0});
         var mm=s.m[sl.m]||(s.m[sl.m]={}); mm[w]=(mm[w]||0)+t.amount; s.total+=t.amount;
@@ -1523,7 +1531,7 @@ function buildHalfReport(year, half){
   if(REFUND_RAW){
     REFUND_RAW.forEach(function(x){
       if(REFUND_GRPS.indexOf(x.grp)<0) return;
-      var sl=repSlot(x.year, x.month, x.week, x.date);
+      var sl=repSlot(x.year, x.month, x.week, x.date, x.wweek);
       if(sl.y!==year || months.indexOf(sl.m)<0) return;
       var w=sl.w; weeksSeen[sl.m][w]=true;
       var k=x.grp+'|'+x.sun, rs=refundSun[k]||(refundSun[k]={g:x.grp,s:x.sun,m:{},total:0});
@@ -1535,7 +1543,7 @@ function buildHalfReport(year, half){
     var ws=Object.keys(weeksSeen[m]).map(Number).sort(function(a,b){return a-b;});
     if(ws.length){ weekCols[m]=ws; activeMonths.push(m); }
   });
-  return {year:year, half:half, basis:REPORT_BASIS, months:activeMonths, weekCols:weekCols, dates:dates, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
+  return {year:year, half:half, basis:REPORT_BASIS, months:activeMonths, weekCols:weekCols, dates:dates, estCnt:estCnt, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
 }
 function halfLabel(half){ return half==='H2'?'하반기(7~12월)':'상반기(1~6월)'; }
 /* 셀 표시: 입금액 아래 괄호로 환급금 */
@@ -1596,7 +1604,8 @@ function renderOfferReport(){
   if(!rep.hasRefund && !REFUND_RAW) html+='<div style="font-size:12px;color:var(--muted);margin:8px 2px">💸 환급금(40%) 불러오는 중...</div>';
   html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 주차별 순헌금 입금액이며, 아래 괄호는 그 순헌금의 환급금(40%)입니다. 빈칸은 없음.'
     +(REPORT_BASIS==='worship'
-      ? '<br>※ 순예배 기준: 구글시트의 입금 주차에서 한 주를 빼서 집계했습니다(1주차 입금은 앞 달 마지막 주차). 주차 아래는 그 주 예배 날짜와 (실제 입금일)입니다.'
+      ? '<br>※ 순예배 기준: 구글시트의 \'순예배 주차\' 열로 집계했습니다. 순예배 주차가 입금 주차보다 크면(예: 11월 1주 입금 → 5주차) 앞 달로 봅니다. 주차 아래는 그 주 예배 날짜와 (실제 입금일)입니다.'
+      +(rep.estCnt?'<br><b style="color:#b45309">※ 순예배 주차가 비어 있는 '+rep.estCnt+'건은 입금 주차 − 1로 계산했습니다.</b>':'')+''
       : '<br>※ 입금 기준: 실제 입금된 주차로 집계했습니다. 주차 아래 날짜는 그 주의 입금일입니다.')
     +'</div>';
   c.innerHTML=html;
@@ -1869,7 +1878,7 @@ function renderOfferWeekly(d6, d5) {
   html += '<div style="overflow-x:auto"><table class="offer-tbl"><thead>';
 
   // 1행: 그룹명 헤더 (각 그룹별 색상)
-  html += '<tr><th rowspan="2" style="text-align:left;background:#f8fafc">주차</th>'
+  html += '<tr><th rowspan="2" style="text-align:left;background:#f8fafc">입금 주차</th>'
         + '<th rowspan="2" style="background:#f8fafc">합계</th>';
   ALLOWED_GRP.forEach(function(g){
     var gc = GRP_CLASS[g] || '';
@@ -2247,24 +2256,48 @@ function parseCSV(text){
   return rows;
 }
 function rnum(s){ if(s==null)return 0; var n=parseFloat(String(s).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
+/* 시트 머리글로 열 위치 찾기 (열을 추가해도 깨지지 않게). 못 찾으면 현재 배치(순예배 주차 열 포함) 사용 */
+function sheetColsFromRows(rows){
+  var C={year:1,month:3,date:4,week:5,wweek:6,type:7,desc:8,income:9,refund:13,done:14};
+  for(var ri=0; ri<Math.min(rows.length,6); ri++){
+    var r=rows[ri]||[], n=r.map(function(x){return String(x||'').replace(/\s/g,'');});
+    if(n.indexOf('구분')<0 || n.indexOf('내역')<0) continue;
+    var F={};
+    n.forEach(function(h,i){
+      function set(k){ if(F[k]===undefined) F[k]=i; }
+      if(h==='년도') set('year'); else if(h==='월') set('month');
+      else if(/날짜$/.test(h)) set('date');
+      else if(h==='입금주차'||h==='주차') set('week');
+      else if(h==='순예배주차') set('wweek');
+      else if(h==='구분') set('type'); else if(h==='내역') set('desc'); else if(h==='수입') set('income');
+      else if(h.indexOf('환급')>=0 && h.indexOf('40')>=0) set('refund');
+      else if(h.indexOf('환급')>=0 && h.indexOf('완료')>=0) set('done');
+    });
+    Object.keys(F).forEach(function(k){ C[k]=F[k]; });
+    if(F.wweek===undefined) C.wweek=-1;
+    break;
+  }
+  return C;
+}
 function parseRefundRows(text){
-  // 컬럼: B(1)년도 D(3)월 E(4)날짜 F(5)주차 G(6)구분 H(7)내역 I(8)수입 M(12)환급40% N(13)완료여부
-  var rows=parseCSV(text), recs=[];
+  var rows=parseCSV(text), recs=[], C=sheetColsFromRows(rows);
+  var need=Math.max(C.type,C.desc,C.income,C.refund,C.done);
   rows.forEach(function(r){
-    if(!r||r.length<13) return;
-    var yr=String(r[1]||'').trim();
+    if(!r||r.length<=Math.min(need,C.refund)) return;
+    var yr=String(r[C.year]||'').trim();
     if(!/^\d{4}$/.test(yr)) return;
-    if(String(r[6]||'').replace(/\s/g,'')!=='순헌금') return;     // 순헌금 입금 행만
-    var done=String(r[13]||'').trim();
-    if(done.replace(/\s/g,'')==='적용제외') return;               // 적용제외(6/10 이전) 제외
-    var refund=rnum(r[12]); if(refund<=0) return;                 // 40% 환급 대상만
-    var amount=rnum(r[8]);                                        // 원금 입금액
-    var month=parseInt(String(r[3]||'').replace(/[^0-9]/g,''),10);
-    if(!month){ var mm=String(r[4]||'').match(/\d{4}-(\d{2})-/); if(mm)month=parseInt(mm[1],10); }
-    var week=parseInt(String(r[5]||'').replace(/[^0-9]/g,''),10)||1;
-    var info=parseGS(String(r[7]||'').trim());
-    recs.push({year:yr, month:month||0, week:week, date:String(r[4]||'').trim(),
-      raw:String(r[7]||'').trim(), grp:info.g, sun:info.s||'기타',
+    if(String(r[C.type]||'').replace(/\s/g,'')!=='순헌금') return;     // 순헌금 입금 행만
+    var done=String(r[C.done]||'').trim();
+    if(done.replace(/\s/g,'')==='적용제외') return;                    // 적용제외(6/10 이전) 제외
+    var refund=rnum(r[C.refund]); if(refund<=0) return;                // 40% 환급 대상만
+    var amount=rnum(r[C.income]);                                      // 원금 입금액
+    var month=parseInt(String(r[C.month]||'').replace(/[^0-9]/g,''),10);
+    if(!month){ var mm=String(r[C.date]||'').match(/\d{4}-(\d{2})-/); if(mm)month=parseInt(mm[1],10); }
+    var week=parseInt(String(r[C.week]||'').replace(/[^0-9]/g,''),10)||1;
+    var wweek=C.wweek>=0 ? (parseInt(String(r[C.wweek]||'').replace(/[^0-9]/g,''),10)||0) : 0;
+    var info=parseGS(String(r[C.desc]||'').trim());
+    recs.push({year:yr, month:month||0, week:week, wweek:wweek, date:String(r[C.date]||'').trim(),
+      raw:String(r[C.desc]||'').trim(), grp:info.g, sun:info.s||'기타',
       amount:amount, refund:refund, done:done});
   });
   return recs;
@@ -2530,7 +2563,7 @@ function renderDrwBody() {
       var ii=t.dir==='income';
       html+='<div class="drw-tx"><div class="tx-ic '+(ii?'in':'ex')+'">'+(ii?'💰':'💸')+'</div>'
         +'<div class="tx-info"><div class="tx-desc">'+esc(t.desc||t.type||'—')+'</div>'
-        +'<div class="tx-meta">'+esc(t.type||'')+(t.week?' · '+t.week+'주차':'')+'</div></div>'
+        +'<div class="tx-meta">'+esc(t.type||'')+(t.week?' · 입금 '+t.week+'주차':'')+(t.wweek?' · 순예배 '+t.wweek+'주차':'')+'</div></div>'
         +'<div class="tx-amt '+(ii?'in':'ex')+'">'+(ii?'+':'-')+fmt(Math.abs(t.amount))+'</div></div>';
     });
     html+='</div>';
@@ -2650,10 +2683,10 @@ function dlExcel() {
   d.months.forEach(function(m){if(m.income||m.expense)lines.push(MN[m.month-1]+','+m.income+','+m.expense+','+m.balance);});
   lines.push('합계,'+d.summary.totalIncome+','+d.summary.totalExpense+','+d.summary.balance);
   if(d.janCarryover>0) lines.push('이월금,'+d.janCarryover+',,');
-  lines.push('');lines.push('날짜,주차,구분,내역,수입,지출');
+  lines.push('');lines.push('날짜,입금 주차,순예배 주차,구분,내역,수입,지출');
   d.months.forEach(function(m){m.transactions.forEach(function(t){
     var ii=t.dir==='income';
-    lines.push((t.date||'')+','+t.week+','+esc(t.type||'')+','+(t.desc||'')+(ii?','+t.amount+',':',,,'+Math.abs(t.amount)));
+    lines.push([t.date||'', t.week, t.wweek||'', t.type||'', t.desc||'', ii?t.amount:'', ii?'':Math.abs(t.amount)].map(csvCell).join(','));
   });});
   var blob=new Blob([BOM+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob),a=document.createElement('a');
@@ -2702,7 +2735,7 @@ function buildRpt(){
     // 1월: 서버에서 가져온 janCarryover 사용 (K313 셀 값)
     carry      = d.janCarryover || 0;
     var prevYr = String(+yr-1);
-    carryLabel = '◆ '+prevYr+'년 12월 이월금액 ('+prevYr+'.12.31) [K313]';
+    carryLabel = '◆ '+prevYr+'년 12월 이월금액 ('+prevYr+'.12.31)';
     carryDate  = prevYr+'-12-31';
     carryDesc  = prevYr+'년 이월금액';
   } else {
