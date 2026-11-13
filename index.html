@@ -1467,9 +1467,9 @@ function parseYMD(s){ var m=String(s||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
      (예: 11월 1주 입금 → 순예배 5주차) 앞 달의 주차로 봄.
      순예배 주차가 비어 있으면 입금 주차 − 1 (1주차면 앞 달 마지막 주차) */
 function lastWeekOfMonth(y, m){ return sunWeekOf(new Date(y, m, 0)); }   // m: 1~12
-function repSlot(year, month, week, date, wweek){
+function repSlot(year, month, week, date, wweek, basis){
   var y=+year, m=month, w=parseInt(week,10)||1, ww=parseInt(wweek,10)||0, est=false;
-  if(REPORT_BASIS==='worship'){
+  if((basis||REPORT_BASIS)==='worship'){
     if(ww>0){
       if(ww>w){ m-=1; if(m<1){ m=12; y-=1; } }
       w=ww;
@@ -1487,29 +1487,26 @@ function repWeekSpan(y, m, w){
   if(a>b) return '';
   return a+(a!==b?'~'+b:'')+'일';
 }
-/* 주차 아래 표시 문구 (배열: 줄 단위) */
-function repWeekLabels(rep, m, w){
-  var dr=repDateRange(rep.dates&&rep.dates[m]&&rep.dates[m][w], m), out=[];
-  if(rep.basis==='worship'){ var sp=repWeekSpan(+rep.year, m, w); if(sp) out.push(sp+' 예배'); if(dr) out.push('('+dr+')'); }
-  else if(dr) out.push(dr);
-  return out;
+/* 예배 주차의 날짜 범위: 같은 달이면 '6~12일', 달이 다르면 '10/25~31' (열의 달 기준) */
+function repWorshipSpan(y, m, w, colMonth){
+  var first=new Date(y, m-1, 1).getDay(), last=new Date(y, m, 0).getDate();
+  var a=Math.max(1, 1+(w-1)*7-first), b=Math.min(last, 7+(w-1)*7-first);
+  if(a>b) return '';
+  var rg=a+(a!==b?'~'+b:'');
+  return (m===colMonth) ? rg+'일' : m+'/'+rg;
 }
-/* 입금일 범위 표시: 같은 달이면 '7~9일', 다른 달이 섞이면 '10/31~11/2' */
-function repDateRange(r, colMonth){
-  if(!r) return '';
-  var a=parseYMD(r.min), b=parseYMD(r.max); if(!a||!b) return '';
-  var am=a.getMonth()+1, bm=b.getMonth()+1, ad=a.getDate(), bd=b.getDate(), t;
-  if(am===bm && am===colMonth) t=ad+(ad!==bd?'~'+bd:'')+'일';
-  else if(am===bm) t=am+'/'+ad+(ad!==bd?'~'+bd:'');
-  else t=am+'/'+ad+'~'+bm+'/'+bd;
-  return t+' 입금';
+/* 주차 아래 표시 문구: 예배 날짜만 (예: '6~12일 예배'). 입금일은 표시하지 않음 */
+function repWeekLabels(rep, m, w){
+  var ws=rep.wspan&&rep.wspan[m]&&rep.wspan[m][w]; if(!ws) return [];
+  var t=repWorshipSpan(ws.y, ws.m, ws.w, m); return t?[t+' 예배']:[];
 }
 /* 반기 보고서 데이터: 순별 × (월×주차) 금액 */
 function buildHalfReport(year, half){
   var d=D[year]; if(!d) return null;
   year=String(year);
   var months = (half==='H2')?[7,8,9,10,11,12]:[1,2,3,4,5,6];
-  var weeksSeen={}, dates={}; months.forEach(function(m){ weeksSeen[m]={}; dates[m]={}; });
+  var weeksSeen={}, dates={}, wcnt={}; months.forEach(function(m){ weeksSeen[m]={}; dates[m]={}; wcnt[m]={}; });
+  function recW(col, wl){ var o=wcnt[col.m][col.w]||(wcnt[col.m][col.w]={}), k=wl.y+'-'+wl.m+'-'+wl.w; (o[k]||(o[k]={y:+wl.y,m:wl.m,w:wl.w,n:0})).n++; }
   var sun={}, refundSun={}, hasRefund=false, estCnt=0;
   // 순예배 기준이면 다음 해 1월 입금분이 올해 12월로 올 수 있어 불러온 모든 연도를 살핌
   var srcYears=Object.keys(D).filter(function(y){ return D[y] && (y===year || REPORT_BASIS==='worship'); });
@@ -1521,6 +1518,7 @@ function buildHalfReport(year, half){
         var sl=repSlot(sy, mo.month, t.week, t.date, t.wweek);
         if(sl.y!==year || months.indexOf(sl.m)<0) return;
         var w=sl.w; weeksSeen[sl.m][w]=true; if(sl.est) estCnt++;
+        recW(sl, repSlot(sy, mo.month, t.week, t.date, t.wweek, 'worship'));
         if(/^\d{4}-\d{1,2}-\d{1,2}/.test(t.date||'')){ var r=dates[sl.m][w]||(dates[sl.m][w]={min:t.date,max:t.date}); if(t.date<r.min)r.min=t.date; if(t.date>r.max)r.max=t.date; }
         var k=gs.g+'|'+gs.s, s=sun[k]||(sun[k]={g:gs.g,s:gs.s,m:{},total:0});
         var mm=s.m[sl.m]||(s.m[sl.m]={}); mm[w]=(mm[w]||0)+t.amount; s.total+=t.amount;
@@ -1534,16 +1532,23 @@ function buildHalfReport(year, half){
       var sl=repSlot(x.year, x.month, x.week, x.date, x.wweek);
       if(sl.y!==year || months.indexOf(sl.m)<0) return;
       var w=sl.w; weeksSeen[sl.m][w]=true;
+      recW(sl, repSlot(x.year, x.month, x.week, x.date, x.wweek, 'worship'));
       var k=x.grp+'|'+x.sun, rs=refundSun[k]||(refundSun[k]={g:x.grp,s:x.sun,m:{},total:0});
       var mm=rs.m[sl.m]||(rs.m[sl.m]={}); mm[w]=(mm[w]||0)+x.refund; rs.total+=x.refund; hasRefund=true;
     });
   }
-  var weekCols={}; var activeMonths=[];
+  var weekCols={}; var activeMonths=[], wspan={};
   months.forEach(function(m){
     var ws=Object.keys(weeksSeen[m]).map(Number).sort(function(a,b){return a-b;});
     if(ws.length){ weekCols[m]=ws; activeMonths.push(m); }
+    wspan[m]={};
+    ws.forEach(function(w){   // 그 칸에서 가장 많은 순예배 주차를 대표로 사용
+      var o=wcnt[m][w]; if(!o) return; var best=null;
+      Object.keys(o).forEach(function(k){ if(!best||o[k].n>best.n) best=o[k]; });
+      if(best) wspan[m][w]=best;
+    });
   });
-  return {year:year, half:half, basis:REPORT_BASIS, months:activeMonths, weekCols:weekCols, dates:dates, estCnt:estCnt, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
+  return {year:year, half:half, basis:REPORT_BASIS, months:activeMonths, weekCols:weekCols, wspan:wspan, dates:dates, estCnt:estCnt, sun:sun, refundSun:refundSun, hasRefund:hasRefund};
 }
 function halfLabel(half){ return half==='H2'?'하반기(7~12월)':'상반기(1~6월)'; }
 /* 셀 표시: 입금액 아래 괄호로 환급금 */
@@ -1604,9 +1609,9 @@ function renderOfferReport(){
   if(!rep.hasRefund && !REFUND_RAW) html+='<div style="font-size:12px;color:var(--muted);margin:8px 2px">💸 환급금(40%) 불러오는 중...</div>';
   html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 주차별 순헌금 입금액이며, 아래 괄호는 그 순헌금의 환급금(40%)입니다. 빈칸은 없음.'
     +(REPORT_BASIS==='worship'
-      ? '<br>※ 순예배 기준: 구글시트의 \'순예배 주차\' 열로 집계했습니다. 순예배 주차가 입금 주차보다 크면(예: 11월 1주 입금 → 5주차) 앞 달로 봅니다. 주차 아래는 그 주 예배 날짜와 (실제 입금일)입니다.'
+      ? '<br>※ 순예배 기준: 구글시트의 \'순예배 주차\' 열로 집계했습니다. 순예배 주차가 입금 주차보다 크면(예: 11월 1주 입금 → 5주차) 앞 달로 봅니다. 주차 아래는 그 주차의 순예배 날짜입니다.'
       +(rep.estCnt?'<br><b style="color:#b45309">※ 순예배 주차가 비어 있는 '+rep.estCnt+'건은 입금 주차 − 1로 계산했습니다.</b>':'')+''
-      : '<br>※ 입금 기준: 실제 입금된 주차로 집계했습니다. 주차 아래 날짜는 그 주의 입금일입니다.')
+      : '<br>※ 입금 기준: 시트의 입금 주차로 집계했습니다. 주차 아래는 그 입금에 해당하는 순예배 날짜입니다.')
     +'</div>';
   c.innerHTML=html;
   if(!REFUND_RAW){ try{ loadRefund(function(){ if(OFFER_TAB==='report') renderOfferReport(); }); }catch(e){} }
@@ -2381,7 +2386,7 @@ function renderOfferRefund(){
       +'<button class="rf-tool rf-tool-acct" onclick="showAccounts()">📇 계좌·연락처</button></div>';
     if(!recs.length){
       c.innerHTML=head+'<div class="empty"><div class="empty-i">📭</div><div>'+yr+'년 순헌금 환급 대상 없음</div>'
-        +'<div style="font-size:12px;color:var(--muted);margin-top:6px">2026-06-10부터 적용 · 시트 M열(40% 환급액)이 채워진 순헌금 행만 집계합니다.</div></div>';
+        +'<div style="font-size:12px;color:var(--muted);margin-top:6px">2026-06-10부터 적용 · 시트의 "순 헌금 환급(입금액의 40%)" 열이 채워진 순헌금 행만 집계합니다.</div></div>';
       return;
     }
     var html=head;
@@ -2485,7 +2490,7 @@ function renderOfferRefund(){
       +'<td style="text-align:right;font-weight:800;color:#1e40af">'+fmt(gChu)+'</td>'
       +'<td style="text-align:right;font-weight:800;color:#166534">'+fmt(gRet)+'</td>'
       +'<td style="text-align:center;font-weight:800;color:'+(gDone>=gCnt?'#059669':'#b45309')+'">'+gDone+'/'+gCnt+' 이체</td></tr></tfoot></table></div>';
-    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 G열 "순헌금" 행의 I열(원금)·M열(40% 환급)을 집계합니다.<br>※ 14개 순을 모두 표시하며, 그 기간 입금이 없는 순은 <b style="color:#b45309">미입금</b>으로 표시됩니다. 상단 "입금" 필터로 입금/미입금/모두를 구분해 볼 수 있습니다. (기간·전체 합계는 항상 실제 입금 기준)<br>※ 각 기간 헤더의 <b>체크박스</b>로 여러 기간을 고른 뒤 <b>🏦 이체 엑셀 다운</b>을 누르면 선택한 기간을 한 파일로 합쳐 만듭니다. (아무것도 선택 안 하면 최신 기간)<br>※ 입금액 배분 → <b style="color:#9a3412">순환급 40%</b>(각 순 이체) · <b style="color:#1e40af">교회입금 20%</b> · <b style="color:#166534">보유 40%</b>.<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">※ 2026-06-10부터 적용 · 시트 구분이 "순헌금"인 행의 수입(원금)·"순 헌금 환급(입금액의 40%)" 열을 집계합니다.<br>※ 14개 순을 모두 표시하며, 그 기간 입금이 없는 순은 <b style="color:#b45309">미입금</b>으로 표시됩니다. 상단 "입금" 필터로 입금/미입금/모두를 구분해 볼 수 있습니다. (기간·전체 합계는 항상 실제 입금 기준)<br>※ 각 기간 헤더의 <b>체크박스</b>로 여러 기간을 고른 뒤 <b>🏦 이체 엑셀 다운</b>을 누르면 선택한 기간을 한 파일로 합쳐 만듭니다. (아무것도 선택 안 하면 최신 기간)<br>※ 입금액 배분 → <b style="color:#9a3412">순환급 40%</b>(각 순 이체) · <b style="color:#1e40af">교회입금 20%</b> · <b style="color:#166534">보유 40%</b>.<br>※ 이체 완료는 N열(완료 여부)에 표시가 있으면 ✓완료, 비어 있으면 미완료. "적용제외" 행은 제외됩니다.</div>';
     c.innerHTML=html;
   });
 }
