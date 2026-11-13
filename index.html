@@ -1460,21 +1460,31 @@ function basisLabel(b){ return (b||REPORT_BASIS)==='worship'?'순예배 기준':
 /* 시트 주차 규칙: 일요일 시작, 그 달 1일이 든 주 = 1주 */
 function sunWeekOf(dt){ var first=new Date(dt.getFullYear(),dt.getMonth(),1).getDay(); return Math.floor((dt.getDate()+first-1)/7)+1; }
 function parseYMD(s){ var m=String(s||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
-/* 보고서 칸 위치(연·월·주)
-   - 입금 기준: 시트의 월·주차 그대로
-   - 순예배 기준: 입금한 주(일~토)의 바로 앞 주를 순예배 주로 보고,
-     그 주의 주일(일요일)이 속한 달의 '몇째 주일'로 셈 (첫째 주일이 든 주 = 1주)
-     → 달이 바뀌는 주도 둘로 갈라지지 않음 */
+/* 보고서 칸 위치(연·월·주) — 구글시트의 월·주차 기준
+   - 입금 기준: 시트 주차 그대로
+   - 순예배 기준: 시트 주차 − 1 (1주차면 앞 달의 마지막 주차) */
+function lastWeekOfMonth(y, m){ return sunWeekOf(new Date(y, m, 0)); }   // m: 1~12
 function repSlot(year, month, week, date){
-  var w=parseInt(week,10)||1;
-  if(REPORT_BASIS!=='worship') return {y:String(year), m:month, w:w};
-  var dt=parseYMD(date);
-  if(!dt){ // 날짜가 없으면 시트 월·주차의 대략적인 날짜로 추정
-    var f=new Date(+year,month-1,1); dt=new Date(+year,month-1,1+(w-1)*7-f.getDay());
-    if(dt.getMonth()!==month-1) dt=f;
+  var y=+year, m=month, w=parseInt(week,10)||1;
+  if(REPORT_BASIS==='worship'){
+    w-=1;
+    if(w<1){ m-=1; if(m<1){ m=12; y-=1; } w=lastWeekOfMonth(y, m); }
   }
-  var sun=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()-dt.getDay()-7); // 앞 주의 주일
-  return {y:String(sun.getFullYear()), m:sun.getMonth()+1, w:Math.ceil(sun.getDate()/7), sun:sun};
+  return {y:String(y), m:m, w:w};
+}
+/* 시트 주차의 날짜 범위(일요일 시작, 달 안으로 자름) → '1~7일' */
+function repWeekSpan(y, m, w){
+  var first=new Date(y, m-1, 1).getDay(), last=new Date(y, m, 0).getDate();
+  var a=Math.max(1, 1+(w-1)*7-first), b=Math.min(last, 7+(w-1)*7-first);
+  if(a>b) return '';
+  return a+(a!==b?'~'+b:'')+'일';
+}
+/* 주차 아래 표시 문구 (배열: 줄 단위) */
+function repWeekLabels(rep, m, w){
+  var dr=repDateRange(rep.dates&&rep.dates[m]&&rep.dates[m][w], m), out=[];
+  if(rep.basis==='worship'){ var sp=repWeekSpan(+rep.year, m, w); if(sp) out.push(sp+' 예배'); if(dr) out.push('('+dr+')'); }
+  else if(dr) out.push(dr);
+  return out;
 }
 /* 입금일 범위 표시: 같은 달이면 '7~9일', 다른 달이 섞이면 '10/31~11/2' */
 function repDateRange(r, colMonth){
@@ -1538,7 +1548,7 @@ function repTableHTML(rep){
   var h1='<tr><th colspan="2" rowspan="2" style="text-align:left">다락방/순</th><th rowspan="2">순장명</th><th rowspan="2">권찰</th>';
   months.forEach(function(m){ h1+='<th colspan="'+weekCols[m].length+'">'+m+'월</th>'; });
   h1+='<th rowspan="2">합계</th></tr>';
-  var h2='<tr>'; months.forEach(function(m){ weekCols[m].forEach(function(w){ var dr=repDateRange(rep.dates&&rep.dates[m]&&rep.dates[m][w], m); h2+='<th>'+w+'주'+(dr?'<div class="rep-dt">'+dr+'</div>':'')+'</th>'; }); }); h2+='</tr>';
+  var h2='<tr>'; months.forEach(function(m){ weekCols[m].forEach(function(w){ var lb=repWeekLabels(rep, m, w); h2+='<th>'+w+'주'+lb.map(function(x){return '<div class="rep-dt">'+x+'</div>';}).join('')+'</th>'; }); }); h2+='</tr>';
   var body='', colOff=new Array(totalWeekCols).fill(0), colRef=new Array(totalWeekCols).fill(0), gOff=0, gRef=0;
   REPORT_GRPS.forEach(function(g, gi){
     var suns=REFUND_SUBS[g]||[];
@@ -1586,7 +1596,7 @@ function renderOfferReport(){
   if(!rep.hasRefund && !REFUND_RAW) html+='<div style="font-size:12px;color:var(--muted);margin:8px 2px">💸 환급금(40%) 불러오는 중...</div>';
   html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">※ 각 칸은 주차별 순헌금 입금액이며, 아래 괄호는 그 순헌금의 환급금(40%)입니다. 빈칸은 없음.'
     +(REPORT_BASIS==='worship'
-      ? '<br>※ 순예배 기준: 입금한 주의 바로 앞 주에 모인 순예배로 옮겨 집계했습니다. 주차는 그 달 첫째 주일(일요일)이 든 주를 1주로 셉니다. 주차 아래 날짜는 실제 입금일입니다.'
+      ? '<br>※ 순예배 기준: 구글시트의 입금 주차에서 한 주를 빼서 집계했습니다(1주차 입금은 앞 달 마지막 주차). 주차 아래는 그 주 예배 날짜와 (실제 입금일)입니다.'
       : '<br>※ 입금 기준: 실제 입금된 주차로 집계했습니다. 주차 아래 날짜는 그 주의 입금일입니다.')
     +'</div>';
   c.innerHTML=html;
@@ -1600,7 +1610,7 @@ function repBlockAOA(rep){
   var title=new Array(totalCols).fill(''); title[0]='＜'+rep.year+'년 '+halfLabel(rep.half)+' 순헌금 현황 · '+basisLabel(rep.basis)+' (괄호: 순헌금 환급금 40%)＞';
   var top=new Array(totalCols).fill(''); top[0]='다락방/순'; top[2]='순장명'; top[3]='권찰'; top[totalCols-1]='합계';
   var sub=new Array(totalCols).fill('');
-  var col=LBL; months.forEach(function(m){ top[col]=m+'월'; weekCols[m].forEach(function(w,wi){ var dr=repDateRange(rep.dates&&rep.dates[m]&&rep.dates[m][w], m); sub[col+wi]=w+'주'+(dr?'\n'+dr:''); }); col+=weekCols[m].length; });
+  var col=LBL; months.forEach(function(m){ top[col]=m+'월'; weekCols[m].forEach(function(w,wi){ var lb=repWeekLabels(rep, m, w); sub[col+wi]=[w+'주'].concat(lb).join('\n'); }); col+=weekCols[m].length; });
   var aoa=[title, top, sub];
   var merges=[{s:{r:0,c:0},e:{r:0,c:totalCols-1}},{s:{r:1,c:0},e:{r:2,c:1}},{s:{r:1,c:2},e:{r:2,c:2}},{s:{r:1,c:3},e:{r:2,c:3}},{s:{r:1,c:totalCols-1},e:{r:2,c:totalCols-1}}];
   var cc=LBL; months.forEach(function(m){ var n=weekCols[m].length; if(n>1)merges.push({s:{r:1,c:cc},e:{r:1,c:cc+n-1}}); cc+=n; });
