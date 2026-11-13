@@ -11,7 +11,7 @@
 // ============================================================
 
 const DEFAULT_GAS_URL =
-  'https://script.google.com/macros/s/AKfycbxSjZrUteeooZBjK1vTKtDTQkm6gFqYeUUp3ajGQc4Vpk-Pqw7y9wwYHogHS50_M_KW/exec';
+  'https://script.google.com/macros/s/AKfycbwSxkxP23CkURMvgqpt0MACSlsJCswYYVvkdmkz3TJ70U8gh4L-c0BogR3ayGPtSiHi/exec';
 
 module.exports = async (req, res) => {
   const GAS_URL = process.env.GAS_URL || DEFAULT_GAS_URL;
